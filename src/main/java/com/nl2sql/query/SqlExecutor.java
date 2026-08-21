@@ -7,7 +7,9 @@ import org.springframework.stereotype.Component;
 
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
+import java.sql.SQLException;
 import java.sql.SQLTimeoutException;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -26,13 +28,12 @@ public class SqlExecutor {
 
     public QueryResult execute(String sql) {
         try {
-            return jdbcTemplate.query(
-                    con -> {
-                        var stmt = con.createStatement();
-                        stmt.setQueryTimeout(30); // NFR-4
-                        return stmt;
-                    },
-                    SqlExecutor::extract);
+            return jdbcTemplate.execute((Statement statement) -> {
+                statement.setQueryTimeout(30); // NFR-4
+                try (ResultSet rs = statement.executeQuery(sql)) {
+                    return extract(rs);
+                }
+            });
         } catch (BizException e) {
             throw e;
         } catch (Exception e) {
@@ -43,7 +44,7 @@ public class SqlExecutor {
         }
     }
 
-    private static QueryResult extract(ResultSet rs) throws Exception {
+    private static QueryResult extract(ResultSet rs) throws SQLException {
         ResultSetMetaData meta = rs.getMetaData();
         int columnCount = meta.getColumnCount();
 
