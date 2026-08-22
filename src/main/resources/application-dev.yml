@@ -3,13 +3,6 @@ spring:
     url: jdbc:mysql://${DB_HOST:127.0.0.1}:${DB_PORT:3306}/${DB_NAME:nl2sql}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
     username: ${DB_USERNAME:root}
     password: ${DB_PASSWORD:}
-    hikari:
-      maximum-pool-size: 10          # ADR D-01
-      minimum-idle: 5
-      connection-timeout: 30000
-      idle-timeout: 600000
-      max-lifetime: 1800000
-      read-only: true                # SR-2 只读连接
   flyway:
     enabled: true
     locations: classpath:db/migration

@@ -1,0 +1,31 @@
+# === Maven 编译输出 ===
+target/
+
+# === IDE ===
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.settings/
+.classpath
+.project
+.factorypath
+
+# === 日志 ===
+*.log
+logs/
+
+# === 环境变量 / 密钥（禁止提交，章程 §环境策略） ===
+.env
+application-local.yml
+application-secret.yml
+
+# === 操作系统 ===
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# === 前端（M6 预留） ===
+node_modules/
+dist/

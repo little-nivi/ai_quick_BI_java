@@ -2,6 +2,7 @@ package com.nl2sql.query;
 
 import com.nl2sql.common.BizException;
 import com.nl2sql.common.ErrorCode;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
@@ -15,14 +16,14 @@ import java.util.List;
 
 /**
  * 只读连接执行 SQL + 超时控制（REQ-503、SR-2）。
- * 数据源已配置 read-only=true；此处再显式设置 queryTimeout。
+ * 注入只读数据源对应的 JdbcTemplate（read-only=true，见 {@code DataSourceConfig}）。
  */
 @Component
 public class SqlExecutor {
 
     private final JdbcTemplate jdbcTemplate;
 
-    public SqlExecutor(JdbcTemplate jdbcTemplate) {
+    public SqlExecutor(@Qualifier("readonlyJdbcTemplate") JdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
     }
 
