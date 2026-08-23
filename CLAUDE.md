@@ -26,6 +26,7 @@
 3. **测试回链**：测试用例名 / 注释引用 `TC-<模块号>-<流水>-<序号>`。
 4. **无编号代码视为脱离 Spec**，需补编号或回炉。
 5. **冲突裁决**：ADR（人拍板） > Spec > 章程；ADR 未覆盖的，停下来问，不自行决定。
+6. **JSON 字段命名（易漏，强制）**：对外接口请求/响应字段与 LLM 输出字段一律 **snake_case**；Java record/DTO 组件用 camelCase 时，**必须**加 `@JsonProperty("snake_case")` 显式桥接。凡 record/DTO 含下划线字段却漏了 `@JsonProperty`，即为漏映射 bug（M3 `is_query`/`feedback_type`、M5 `related_tables` 已各踩一次）。**新增任何 record/DTO 前先自查本条。**
 
 ## Git 操作约定
 
