@@ -57,6 +57,13 @@ public class DataSourceConfig {
         return new HikariDataSource(config);
     }
 
+    /** 读写 JdbcTemplate（@Primary）：AuthService/AuditService/MetricMatcher 等按类型注入的默认选择。 */
+    @Primary
+    @Bean(name = "jdbcTemplate")
+    public JdbcTemplate jdbcTemplate(@Qualifier("dataSource") DataSource dataSource) {
+        return new JdbcTemplate(dataSource);
+    }
+
     /** 只读 JdbcTemplate：SqlExecutor 注入用。 */
     @Bean(name = "readonlyJdbcTemplate")
     public JdbcTemplate readonlyJdbcTemplate(@Qualifier("readonlyDataSource") DataSource dataSource) {

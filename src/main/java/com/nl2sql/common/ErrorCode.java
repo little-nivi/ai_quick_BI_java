@@ -15,7 +15,9 @@ public enum ErrorCode {
     INTERNAL_ERROR(5000, "系统内部错误"),
     LLM_TIMEOUT(5001, "系统繁忙，请稍后重试"),
     DB_TIMEOUT(5002, "查询超时，请缩小范围"),
-    LLM_FORMAT_ERROR(5003, "服务暂时不可用，请稍后重试");
+    LLM_FORMAT_ERROR(5003, "服务暂时不可用，请稍后重试"),
+    UNAUTHORIZED(401, "未授权"),
+    AUTH_FAILED(40101, "用户名或密码错误");
 
     private final int code;
     private final String message;

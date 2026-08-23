@@ -14,3 +14,6 @@ nl2sql:
     api-key: ${DASHSCOPE_API_KEY:}
     model: ${DASHSCOPE_MODEL:qwen-turbo}
     timeout-seconds: 30              # NFR-2
+  jwt:
+    secret: ${JWT_SECRET:}
+    expiration-hours: 24             # ADR D-11

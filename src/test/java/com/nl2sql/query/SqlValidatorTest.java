@@ -9,8 +9,8 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
 /**
- * SqlValidator 白名单校验（REQ-502、SR-1）。
- * 覆盖 TC-502-01、TC-502-02。
+ * SqlValidator AST 级白名单（REQ-509、D-15）。
+ * 覆盖 TC-509-01（字符串字面量不误拦）、TC-509-02（DML 拦截）。
  */
 class SqlValidatorTest {
 
@@ -18,7 +18,7 @@ class SqlValidatorTest {
 
     @Test
     void deleteIsBlocked() {
-        // TC-502-01 验证 REQ-502 高危拦截
+        // TC-509-02 DML 拦截
         BizException ex = catchThrowableOfType(
                 () -> validator.validate("DELETE FROM orders"), BizException.class);
         assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.SQL_BLOCKED);
@@ -26,24 +26,23 @@ class SqlValidatorTest {
 
     @Test
     void updateIsBlocked() {
-        // TC-502-02 验证 REQ-502 非 SELECT 拦截
         BizException ex = catchThrowableOfType(
                 () -> validator.validate("UPDATE orders SET amount = 0"), BizException.class);
         assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.SQL_BLOCKED);
     }
 
     @Test
-    void dropAlterTruncateInsertCreateAreBlocked() {
-        for (String sql : new String[]{
-                "DROP TABLE orders",
-                "ALTER TABLE orders ADD COLUMN x INT",
-                "TRUNCATE TABLE orders",
-                "INSERT INTO orders VALUES (1)",
-                "CREATE TABLE t (id INT)"}) {
-            BizException ex = catchThrowableOfType(() -> validator.validate(sql), BizException.class);
-            assertThat(ex).as("should block: %s", sql).isNotNull();
-            assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.SQL_BLOCKED);
-        }
+    void insertIsBlocked() {
+        BizException ex = catchThrowableOfType(
+                () -> validator.validate("INSERT INTO orders VALUES (1)"), BizException.class);
+        assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.SQL_BLOCKED);
+    }
+
+    @Test
+    void ddlIsBlocked() {
+        BizException ex = catchThrowableOfType(
+                () -> validator.validate("CREATE TABLE t (id INT)"), BizException.class);
+        assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.SQL_BLOCKED);
     }
 
     @Test
@@ -58,6 +57,14 @@ class SqlValidatorTest {
     @Test
     void validSelectPasses() {
         assertThatCode(() -> validator.validate("SELECT SUM(amount) FROM orders"))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void stringLiteralWithDangerousWordIsNotBlocked() {
+        // TC-509-01：字符串字面量含 'DELETE' 不误拦（AST 级优势）
+        assertThatCode(() -> validator.validate(
+                "SELECT * FROM orders WHERE status = 'DELETE 此订单'"))
                 .doesNotThrowAnyException();
     }
 

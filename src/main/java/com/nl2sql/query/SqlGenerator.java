@@ -35,19 +35,20 @@ public class SqlGenerator {
             """;
 
     private static final String SYSTEM_PROMPT = """
-            你是 SQL 生成助手。根据用户问题，仅针对 orders 表生成一条只读 SELECT 查询。
-            只输出 JSON，结构固定为 {"sql": "...", "explanation": "..."}，不要输出任何其他文字。
+            你是 SQL 生成助手。根据用户问题，判断是否为数据查询意图，并针对 orders 表生成一条只读 SELECT 查询。
+            只输出 JSON，结构固定为 {"sql": "...", "explanation": "...", "is_query": true, "confidence": 0.9}，不要输出任何其他文字。
             规则：
-            1. 只允许 SELECT 语句。
+            1. 只允许 SELECT 语句；非数据查询意图时 is_query 填 false，sql 填空字符串。
             2. 不允许使用 DROP/DELETE/UPDATE/ALTER/TRUNCATE/INSERT/CREATE。
             3. 金额字段 amount、price 使用 SUM 聚合时保留两位小数语义。
             4. 时间过滤使用 order_date。
+            5. confidence 为 0~1 的小数，表示你对 SQL 正确性的置信度。
             """;
 
     private static final String FEW_SHOT = """
-            示例1：问题"总销售额是多少" -> {"sql":"SELECT SUM(amount) FROM orders","explanation":"全部订单金额求和"}
-            示例2：问题"各地区的订单数量排名" -> {"sql":"SELECT region, COUNT(*) AS cnt FROM orders GROUP BY region ORDER BY cnt DESC","explanation":"按地区分组统计订单数并降序"}
-            示例3：问题"上个月销售额" -> {"sql":"SELECT SUM(amount) FROM orders WHERE order_date >= DATE_SUB(CURDATE(), INTERVAL 1 MONTH)","explanation":"近一个月订单金额求和"}
+            示例1：问题"总销售额是多少" -> {"sql":"SELECT SUM(amount) FROM orders","explanation":"全部订单金额求和","is_query":true,"confidence":0.95}
+            示例2：问题"各地区的订单数量排名" -> {"sql":"SELECT region, COUNT(*) AS cnt FROM orders GROUP BY region ORDER BY cnt DESC","explanation":"按地区分组统计订单数并降序","is_query":true,"confidence":0.9}
+            示例3：问题"今天天气怎么样" -> {"sql":"","explanation":"非数据查询","is_query":false,"confidence":0.9}
             """;
 
     private final LlmClient llmClient;
@@ -62,16 +63,31 @@ public class SqlGenerator {
      * 生成 SQL；上游返回格式异常时重试 1 次（ADR-0002 A3）。
      */
     public LlmResponse generate(String question) {
-        String prompt = buildPrompt(question);
+        String prompt = buildPrompt(question, null);
         String content = callWithRetry(prompt);
         return parse(content);
     }
 
-    private String buildPrompt(String question) {
-        return SYSTEM_PROMPT
-                + "\n\n表结构：\n" + ORDERS_SCHEMA
-                + "\n\n示例：\n" + FEW_SHOT
-                + "\n\n用户问题：" + question;
+    /**
+     * 指标命中时基于模板 SQL 生成（REQ-506、D-13）：
+     * 让 qwen 在 templateSql 基础上结合问题补时间/维度条件，非纯静态替换。
+     */
+    public LlmResponse generateWithTemplate(String question, String templateSql) {
+        String prompt = buildPrompt(question, templateSql);
+        String content = callWithRetry(prompt);
+        return parse(content);
+    }
+
+    private String buildPrompt(String question, String templateSql) {
+        StringBuilder sb = new StringBuilder(SYSTEM_PROMPT);
+        sb.append("\n\n表结构：\n").append(ORDERS_SCHEMA);
+        sb.append("\n\n示例：\n").append(FEW_SHOT);
+        if (templateSql != null) {
+            sb.append("\n\n基础 SQL 模板：").append(templateSql)
+              .append("\n请在此模板基础上，根据用户问题补充时间范围、维度分组、排序等条件，不要改变模板的核心聚合表达式。");
+        }
+        sb.append("\n\n用户问题：").append(question);
+        return sb.toString();
     }
 
     private String callWithRetry(String prompt) {

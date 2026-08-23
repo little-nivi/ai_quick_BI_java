@@ -1,5 +1,6 @@
 package com.nl2sql.common;
 
+import com.nl2sql.query.ClarifyException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
@@ -8,6 +9,8 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import java.util.Map;
+
 /**
  * 全局异常处理。兜底默认：未穷举异常 → 5000 + 通用话术 + error 日志（00_总览 §4）。
  */
@@ -15,6 +18,16 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
+    /** 低置信反问（REQ-512）：4002 + data.clarification。 */
+    @ExceptionHandler(ClarifyException.class)
+    public ResponseEntity<ApiResponse<Map<String, Object>>> handleClarify(ClarifyException e) {
+        return ResponseEntity.ok(new ApiResponse<>(
+                e.getErrorCode().getCode(),
+                e.getErrorCode().getMessage(),
+                Map.of("clarification", e.getClarification()),
+                TraceIdHolder.getOrCreate()));
+    }
 
     @ExceptionHandler(BizException.class)
     public ResponseEntity<ApiResponse<Void>> handleBiz(BizException e) {
