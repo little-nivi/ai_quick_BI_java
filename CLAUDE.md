@@ -70,4 +70,6 @@
 
 ## codegraph
 
-目录已索引（`.codegraph/`）。修改 / 重构代码前，用 `codegraph_explore` 查影响范围（blast radius）与调用链，勿用 grep + read 重复劳动。
+目录已索引（`.codegraph/`）。改代码前用 `codegraph_explore` 查影响范围与调用链，勿用 grep+read 重复劳动。
+
+**读文件纪律（防 token 浪费）**：① `codegraph_explore` 返回的源码=已 Read，不再重复 Read；② 自己刚 Write/Edit 过的文件不回读确认（工具失败会报错）；③ 查单个符号精确到符号名（如 `QueryService.query`），勿整文件 Read。

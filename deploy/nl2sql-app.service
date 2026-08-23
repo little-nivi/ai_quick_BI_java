@@ -1,0 +1,19 @@
+# NL2SQL Spring Boot 应用 systemd 服务
+# 安装到 /etc/systemd/system/nl2sql-app.service
+# 环境变量在 /etc/default/nl2sql-app 中配置（见部署手册）
+
+[Unit]
+Description=NL2SQL Spring Boot Application
+After=syslog.target network.target
+
+[Service]
+Type=simple
+User=www-data
+EnvironmentFile=/etc/default/nl2sql-app
+ExecStart=/usr/bin/java -Xms480m -Xmx960m -XX:MaxMetaspaceSize=320m -XX:+UseG1GC -jar /opt/nl2sql/nl2sql-app.jar
+Restart=on-failure
+RestartSec=10
+SuccessExitStatus=143
+
+[Install]
+WantedBy=multi-user.target
