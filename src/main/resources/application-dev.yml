@@ -35,3 +35,9 @@ management:
   endpoint:
     health:
       show-details: always
+
+# LangFuse 观测（REQ-531，key 经环境变量注入，未配置则降级 no-op）
+langfuse:
+  public-key: ${LANGFUSE_PUBLIC_KEY:}
+  secret-key: ${LANGFUSE_SECRET_KEY:}
+  base-url: ${LANGFUSE_BASE_URL:https://jp.cloud.langfuse.com}

@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nl2sql.common.BizException;
 import com.nl2sql.common.ErrorCode;
+import com.nl2sql.llm.dto.LlmResult;
+import com.nl2sql.llm.dto.LlmUsage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -15,7 +17,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 调用通义千问生成内容，返回模型输出的文本（REQ-501）。
+ * 调用通义千问生成内容，返回模型输出文本 + token 用量（REQ-501/532）。
  */
 @Component
 public class LlmClient {
@@ -35,10 +37,10 @@ public class LlmClient {
     }
 
     /**
-     * 发送 prompt，返回模型生成的文本内容。
+     * 发送 prompt，返回模型生成的文本 + token 用量。
      * 超时 → 5001；HTTP 层异常 → 5003（格式异常，由上层决定是否重试）。
      */
-    public String generate(String prompt) {
+    public LlmResult generate(String prompt) {
         Map<String, Object> body = Map.of(
                 "model", model,
                 "messages", List.of(Map.of("role", "user", "content", prompt)),
@@ -61,17 +63,22 @@ public class LlmClient {
             throw new BizException(ErrorCode.LLM_FORMAT_ERROR);
         }
 
-        return extractContent(responseBody);
+        return parse(responseBody);
     }
 
-    private String extractContent(String responseBody) {
+    private LlmResult parse(String responseBody) {
         try {
             JsonNode root = objectMapper.readTree(responseBody);
             JsonNode content = root.path("choices").path(0).path("message").path("content");
             if (content.isMissingNode() || content.isNull()) {
                 throw new BizException(ErrorCode.LLM_FORMAT_ERROR);
             }
-            return content.asText();
+            JsonNode usage = root.path("usage");
+            LlmUsage u = new LlmUsage(
+                    usage.path("prompt_tokens").asInt(0),
+                    usage.path("completion_tokens").asInt(0),
+                    usage.path("total_tokens").asInt(0));
+            return new LlmResult(content.asText(), u);
         } catch (BizException e) {
             throw e;
         } catch (Exception e) {

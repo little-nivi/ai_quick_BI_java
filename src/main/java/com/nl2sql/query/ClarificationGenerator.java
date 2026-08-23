@@ -32,7 +32,7 @@ public class ClarificationGenerator {
                 + "只输出 JSON，结构固定为 {\"question\": \"澄清问题\", \"options\": [\"选项1\", \"选项2\"]}，不要输出其他文字。"
                 + "\n\n用户问题：" + question;
 
-        String content = llmClient.generate(prompt);
+        String content = llmClient.generate(prompt).content();
         try {
             Map<String, Object> map = objectMapper.readValue(content, Map.class);
             String q = (String) map.get("question");

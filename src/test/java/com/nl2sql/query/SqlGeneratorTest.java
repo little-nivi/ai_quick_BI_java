@@ -5,6 +5,8 @@ import com.nl2sql.common.BizException;
 import com.nl2sql.common.ErrorCode;
 import com.nl2sql.llm.LlmClient;
 import com.nl2sql.llm.dto.LlmResponse;
+import com.nl2sql.llm.dto.LlmResult;
+import com.nl2sql.llm.dto.LlmUsage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -37,17 +39,23 @@ class SqlGeneratorTest {
         generator = new SqlGenerator(llmClient, objectMapper);
     }
 
+    private static LlmResult llmResult(String content) {
+        return new LlmResult(content, new LlmUsage(10, 5, 15));
+    }
+
     @Test
     void generatesSqlFromQuestion() {
         // TC-501-01 验证 REQ-501 SQL 生成
         String content = "{\"sql\":\"SELECT SUM(amount) FROM orders\",\"explanation\":\"total\"}";
-        when(llmClient.generate(anyString())).thenReturn(content);
+        when(llmClient.generate(anyString())).thenReturn(llmResult(content));
 
-        LlmResponse resp = generator.generate("上个月销售额是多少");
+        SqlGenerator.SqlGeneration gen = generator.generate("上个月销售额是多少");
+        LlmResponse resp = gen.response();
 
         assertThat(resp.sql()).startsWith("SELECT");
         assertThat(resp.sql()).contains("SUM(amount)");
         assertThat(resp.sql()).contains("orders");
+        assertThat(gen.usage().totalTokens()).isEqualTo(15);
     }
 
     @Test
@@ -55,11 +63,11 @@ class SqlGeneratorTest {
         // TC-401-02 上游格式异常：重试 1 次后成功
         when(llmClient.generate(anyString()))
                 .thenThrow(new BizException(ErrorCode.LLM_FORMAT_ERROR))
-                .thenReturn("{\"sql\":\"SELECT 1\",\"explanation\":\"x\"}");
+                .thenReturn(llmResult("{\"sql\":\"SELECT 1\",\"explanation\":\"x\"}"));
 
-        LlmResponse resp = generator.generate("q");
+        SqlGenerator.SqlGeneration gen = generator.generate("q");
 
-        assertThat(resp.sql()).isEqualTo("SELECT 1");
+        assertThat(gen.response().sql()).isEqualTo("SELECT 1");
         verify(llmClient, times(2)).generate(anyString());
     }
 

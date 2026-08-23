@@ -5,6 +5,8 @@ import com.nl2sql.common.BizException;
 import com.nl2sql.common.ErrorCode;
 import com.nl2sql.llm.LlmClient;
 import com.nl2sql.llm.dto.LlmResponse;
+import com.nl2sql.llm.dto.LlmResult;
+import com.nl2sql.llm.dto.LlmUsage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -61,21 +63,22 @@ public class SqlGenerator {
 
     /**
      * 生成 SQL；上游返回格式异常时重试 1 次（ADR-0002 A3）。
+     * 返回含 token 用量的 SqlGeneration（REQ-532）。
      */
-    public LlmResponse generate(String question) {
+    public SqlGeneration generate(String question) {
         String prompt = buildPrompt(question, null);
-        String content = callWithRetry(prompt);
-        return parse(content);
+        LlmResult result = callWithRetry(prompt);
+        return new SqlGeneration(parse(result.content()), result.usage());
     }
 
     /**
      * 指标命中时基于模板 SQL 生成（REQ-506、D-13）：
      * 让 qwen 在 templateSql 基础上结合问题补时间/维度条件，非纯静态替换。
      */
-    public LlmResponse generateWithTemplate(String question, String templateSql) {
+    public SqlGeneration generateWithTemplate(String question, String templateSql) {
         String prompt = buildPrompt(question, templateSql);
-        String content = callWithRetry(prompt);
-        return parse(content);
+        LlmResult result = callWithRetry(prompt);
+        return new SqlGeneration(parse(result.content()), result.usage());
     }
 
     private String buildPrompt(String question, String templateSql) {
@@ -90,7 +93,7 @@ public class SqlGenerator {
         return sb.toString();
     }
 
-    private String callWithRetry(String prompt) {
+    private LlmResult callWithRetry(String prompt) {
         try {
             return llmClient.generate(prompt);
         } catch (BizException e) {
@@ -109,5 +112,9 @@ public class SqlGenerator {
             log.error("llm content not parseable as LlmResponse: {}", content, e);
             throw new BizException(ErrorCode.LLM_FORMAT_ERROR);
         }
+    }
+
+    /** 生成结果：LlmResponse + token 用量（REQ-532）。 */
+    public record SqlGeneration(LlmResponse response, LlmUsage usage) {
     }
 }

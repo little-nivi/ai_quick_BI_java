@@ -40,7 +40,7 @@ public class SelfCorrector {
                     + "\n错误信息：" + errorMessage;
 
             try {
-                String content = llmClient.generate(prompt);
+                String content = llmClient.generate(prompt).content();
                 LlmResponse resp = objectMapper.readValue(content, LlmResponse.class);
                 if (resp.sql() != null && !resp.sql().isBlank()) {
                     return resp.sql();

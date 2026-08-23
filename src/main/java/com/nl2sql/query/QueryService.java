@@ -4,6 +4,10 @@ import com.nl2sql.cache.SemanticCache;
 import com.nl2sql.common.BizException;
 import com.nl2sql.common.ErrorCode;
 import com.nl2sql.llm.dto.LlmResponse;
+import com.nl2sql.llm.dto.LlmUsage;
+import com.nl2sql.observability.LangfuseObservability;
+import com.nl2sql.auth.UserContext;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -31,6 +35,8 @@ public class QueryService {
     private final TraceBuilder traceBuilder;
     private final AuditService auditService;
     private final SessionRecorder sessionRecorder;
+    private final LangfuseObservability observability;
+    private final String model;
 
     public QueryService(SemanticCache semanticCache,
                         DegradationHandler degradationHandler,
@@ -46,7 +52,9 @@ public class QueryService {
                         SqlExecutor sqlExecutor,
                         TraceBuilder traceBuilder,
                         AuditService auditService,
-                        SessionRecorder sessionRecorder) {
+                        SessionRecorder sessionRecorder,
+                        LangfuseObservability observability,
+                        @Value("${nl2sql.llm.model:qwen-turbo}") String model) {
         this.semanticCache = semanticCache;
         this.degradationHandler = degradationHandler;
         this.metricMatcher = metricMatcher;
@@ -62,6 +70,8 @@ public class QueryService {
         this.traceBuilder = traceBuilder;
         this.auditService = auditService;
         this.sessionRecorder = sessionRecorder;
+        this.observability = observability;
+        this.model = model;
     }
 
     public QueryResponse query(String question, String ipAddress) {
@@ -91,13 +101,17 @@ public class QueryService {
 
             // REQ-501/506 生成（含 is_query + confidence，一次调用）；超时→降级链 REQ-518
             LlmResponse llm;
+            LlmUsage usage;
             try {
+                SqlGenerator.SqlGeneration gen;
                 if (match != null) {
                     matchedMetric = match.metricName();
-                    llm = sqlGenerator.generateWithTemplate(questionForLlm, match.templateSql());
+                    gen = sqlGenerator.generateWithTemplate(questionForLlm, match.templateSql());
                 } else {
-                    llm = sqlGenerator.generate(questionForLlm);
+                    gen = sqlGenerator.generate(questionForLlm);
                 }
+                llm = gen.response();
+                usage = gen.usage();
             } catch (BizException e) {
                 if (e.getErrorCode() == ErrorCode.LLM_TIMEOUT) {
                     // 降级链：语义缓存兜底
@@ -156,9 +170,11 @@ public class QueryService {
             // REQ-514 溯源
             Trace trace = traceBuilder.build(result.columns(), matchedMetric, confidence, confidenceLevel);
 
-            // REQ-508 审计 + REQ-519 会话写穿透
+            // REQ-508 审计 + REQ-519 会话写穿透 + REQ-531 观测
             auditService.record(question, executedSql, latencyMs, ipAddress, false);
             sessionRecorder.record(question, executedSql, false);
+            observability.record(question, executedSql, latencyMs, false, confidenceLevel,
+                    matchedMetric, currentRole(), model, usage);
 
             QueryResponse response = new QueryResponse(question, limitInjector.inject(permissionInjector.inject(executedSql)),
                     result.columns(), result.rows(), result.rows().size(), latencyMs, matchedMetric,
@@ -177,6 +193,11 @@ public class QueryService {
             sessionRecorder.record(question, generatedSql, false);
             throw e;
         }
+    }
+
+    private String currentRole() {
+        UserContext.AuthUser user = UserContext.get();
+        return user == null ? null : user.role();
     }
 
     /** 接口返回 data 结构（REQ-406 正常返回，新增 cache_hit）。 */

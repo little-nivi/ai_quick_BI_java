@@ -2,6 +2,8 @@ package com.nl2sql.query;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nl2sql.llm.LlmClient;
+import com.nl2sql.llm.dto.LlmResult;
+import com.nl2sql.llm.dto.LlmUsage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -34,7 +36,9 @@ class SelfCorrectorTest {
     void correctsOnFirstAttempt() {
         // TC-513-01 修正成功
         when(llmClient.generate(anyString()))
-                .thenReturn("{\"sql\":\"SELECT SUM(amount) FROM orders\",\"explanation\":\"fixed\"}");
+                .thenReturn(new LlmResult(
+                        "{\"sql\":\"SELECT SUM(amount) FROM orders\",\"explanation\":\"fixed\"}",
+                        new LlmUsage(10, 5, 15)));
 
         String result = corrector.correct("总销售额", "SELECT SUM(amont) FROM orders", "Unknown column amont");
 
