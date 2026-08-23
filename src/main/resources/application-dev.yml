@@ -17,3 +17,21 @@ nl2sql:
   jwt:
     secret: ${JWT_SECRET:}
     expiration-hours: 24             # ADR D-11
+  cache:
+    semantic:
+      maximum-size: 500              # ADR P1-2
+      expire-hours: 24               # ADR P1-1
+      empty-ttl-minutes: 5           # ADR P1-3 空结果防穿透
+    permission:
+      maximum-size: 100
+      expire-hours: 1                # ADR P1-4
+
+# 缓存监控（REQ-521）
+management:
+  endpoints:
+    web:
+      exposure:
+        include: metrics,health,info
+  endpoint:
+    health:
+      show-details: always

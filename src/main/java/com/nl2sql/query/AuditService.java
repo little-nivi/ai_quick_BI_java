@@ -20,7 +20,7 @@ public class AuditService {
         this.jdbcTemplate = jdbcTemplate;
     }
 
-    public void record(String question, String generatedSql, Long latencyMs, String ipAddress) {
+    public void record(String question, String generatedSql, Long latencyMs, String ipAddress, boolean cacheHit) {
         UserContext.AuthUser user = UserContext.get();
         Long userId = user == null ? null : user.userId();
         String role = user == null ? null : user.role();
@@ -29,8 +29,8 @@ public class AuditService {
             jdbcTemplate.update(
                     "INSERT INTO audit_logs (user_id, role, question, generated_sql, confidence, " +
                             "latency_ms, token_used, cache_hit, ip_address) " +
-                            "VALUES (?, ?, ?, ?, NULL, ?, NULL, false, ?)",
-                    userId, role, question, generatedSql, latencyMs, ipAddress);
+                            "VALUES (?, ?, ?, ?, NULL, ?, NULL, ?, ?)",
+                    userId, role, question, generatedSql, latencyMs, cacheHit, ipAddress);
         } catch (Exception e) {
             log.error("audit log write failed, question={}", question, e);
         }

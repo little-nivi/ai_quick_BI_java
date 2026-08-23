@@ -1,5 +1,6 @@
 package com.nl2sql.auth;
 
+import com.nl2sql.cache.PermissionCache;
 import com.nl2sql.common.BizException;
 import com.nl2sql.common.ErrorCode;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -17,11 +18,13 @@ public class AuthService {
 
     private final JdbcTemplate jdbcTemplate;
     private final JwtUtil jwtUtil;
+    private final PermissionCache permissionCache;
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
 
-    public AuthService(JdbcTemplate jdbcTemplate, JwtUtil jwtUtil) {
+    public AuthService(JdbcTemplate jdbcTemplate, JwtUtil jwtUtil, PermissionCache permissionCache) {
         this.jdbcTemplate = jdbcTemplate;
         this.jwtUtil = jwtUtil;
+        this.permissionCache = permissionCache;
     }
 
     public LoginResponse login(String username, String password) {
@@ -44,6 +47,7 @@ public class AuthService {
         String role = (String) row.get("role");
         String dataScope = (String) row.get("data_scope");
         String token = jwtUtil.generate(userId, role, dataScope);
+        permissionCache.put(role, dataScope); // REQ-517 权限缓存写入
         return new LoginResponse(token, role, dataScope);
     }
 

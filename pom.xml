@@ -91,6 +91,22 @@
             <artifactId>spring-security-crypto</artifactId>
         </dependency>
 
+        <!-- 缓存（REQ-516/517，Caffeine L1 本地缓存） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-cache</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.github.ben-manes.caffeine</groupId>
+            <artifactId>caffeine</artifactId>
+        </dependency>
+
+        <!-- 缓存监控埋点（REQ-521，Actuator /actuator/metrics） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
         <!-- Lombok（可选，减少样板） -->
         <dependency>
             <groupId>org.projectlombok</groupId>
