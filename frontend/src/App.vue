@@ -1,9 +1,20 @@
 <script setup lang="ts">
-import { useRouter } from 'vue-router'
+import { ref, watch } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 
 const router = useRouter()
-const role = localStorage.getItem('role') || ''
-const dataScope = localStorage.getItem('data_scope') || ''
+const route = useRoute()
+
+const role = ref('')
+const dataScope = ref('')
+
+function refreshUser() {
+  role.value = localStorage.getItem('role') || ''
+  dataScope.value = localStorage.getItem('data_scope') || ''
+}
+
+// 登录跳转后重新读取（App 根组件不重建，需监听路由）
+watch(() => route.fullPath, refreshUser, { immediate: true })
 
 function logout() {
   localStorage.removeItem('token')
