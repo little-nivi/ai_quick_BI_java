@@ -136,6 +136,16 @@
                     </excludes>
                 </configuration>
             </plugin>
+            <!-- 集成测试默认跳过（连真实 MySQL + qwen）；手动触发：mvn test -Dtest=QueryEndToEndIntegrationTest -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <excludes>
+                        <exclude>**/QueryEndToEndIntegrationTest.java</exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
         </plugins>
     </build>
 </project>
