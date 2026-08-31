@@ -34,7 +34,7 @@
 | 缓存 | Caffeine（L1 本地缓存，CacheService 接口抽象） |
 | LLM | 通义千问 qwen-turbo（DashScope OpenAI 兼容端点，自研 RestClient 直连） |
 | 鉴权 | JWT（HS256）+ BCrypt · 行级权限（role → region WHERE） |
-| 可观测 | Langfuse Cloud（trace + generation + token 用量 + LLM-as-Judge） |
+| 可观测 | Langfuse Cloud · OpenTelemetry SDK + OTLP/HTTP v4 原生管线（trace + generation + token 用量 + LLM-as-Judge 自动评估） |
 | 部署 | Docker MySQL · Nginx 反代 · systemd · Ubuntu 22.04 · 阿里云 ECS |
 
 ## 工程亮点
@@ -45,10 +45,10 @@
 
 ### 2. Langfuse 全链路可观测 + LLM-as-Judge 自动评估
 
-**自研 RestClient 直连 Langfuse ingestion API**（不依赖 SDK，避免版本锁定），覆盖：
-- Trace（用户问题 → SQL → 耗时 → 置信度 → 缓存命中）
-- Generation（token 用量：input/output/total，DashScope 响应原生解析）
-- **LLM-as-Judge 自动评估**：用 qwen-turbo 当裁判，对每条 trace 判断 SQL 是否准确回答了用户问题，0~1 分评分
+初期用自研 RestClient 直连 legacy `/api/public/ingestion` 快速跑通；后续因评估器永不触发深挖官方文档，发现 **legacy 通道在 Langfuse v4 中走兼容双写、评估器管线只在原生 OTel 通道上运行**，随即切换到官方推荐的 **OpenTelemetry Java SDK + OTLP/HTTP v4 原生管线**（`opentelemetry-sdk` + `opentelemetry-exporter-otlp`），覆盖：
+- Root observation（用户问题 / SQL 结果 + trace 级 metadata：耗时 / 置信度 / 缓存命中 / 角色）
+- Generation 子 observation（模型名 + token 用量 input/output/total）
+- **LLM-as-Judge 自动评估**：用 DeepSeek API 当裁判，`isRootObservation=true` 规则命中每条查询的 root span，0~1 分评分，新 trace 秒级可见、分数瞬间产生（legacy 通道延迟 9 分钟且评估器永不触发）
 
 ### 3. 真实生产 Bug 排查（面试重点）
 
@@ -77,7 +77,23 @@
 
 **经验**：时区类问题永远分别确认三样——**存的什么类型（TIMESTAMP vs DATETIME）、容器实际时区、驱动声明时区**。Langfuse 走 Instant + ISO-8601 的做法值得借鉴。
 
-#### Bug C：2G ECS 深夜 OOM——swap thrashing 导致整机无响应
+#### Bug C：LLM-as-Judge 评估器永不触发——legacy ingestion 与 v4 管线隔离
+
+**现象**：Langfuse Evaluators 页 `sql-accuracy` 规则配置无误（isRootObservation=true、采样率 100%、DeepSeek 裁判模型连通），但 "No recent runs"，单条 trace Scores 面板永远空白。期间 trace 本身能显示（延迟约 9 分钟）、token 用量也对。
+
+**根因**：项目用自研 RestClient 调 `POST /api/public/ingestion`（legacy v3 事件格式），而 Langfuse Cloud 已升级到 v4 架构——legacy 请求走**兼容双写通道**，数据能异步回填到 Tracing 页（延迟 9~15 分钟），但**评估器管线、Scores v3 API、v2 Observations API 全部只在原生 v4 OTLP 通道上跑**，中间没有桥接。官方在迁移文档里明确声明 legacy endpoint 于 2026-11-16 下线，Java SDK 0.3.0 已彻底删除 tracing API，只保留 prompts/scores/查询等管理接口。
+
+**修复**：
+- `pom.xml` 引入 `opentelemetry-sdk` + `opentelemetry-exporter-otlp`（OTel 1.49.0，覆盖 Spring Boot BOM 默认的 1.43.0）
+- 新增 `LangfuseOtelTracer`：`SdkTracerProvider` + `BatchSpanProcessor(1s)` + `OtlpHttpSpanExporter` 指向 `{base}/api/public/otel/v1/traces`，请求头带 `Authorization: Basic base64(pk:sk)` + `x-langfuse-ingestion-version: 4`；包一层 `LoggingSpanExporter` 代理导出结果（成功 INFO / 失败 WARN），延续 Bug A 的教训——**永远不让第三方上报静默失败**
+- 重写 `LangfuseObservability`：batch JSON → 一个 root span（`nl2sql-query`，承载整体 input/output）+ 一个 generation 子 span（`type=generation`、`model.name`、`usage_details` JSON），`langfuse.trace.metadata.*` 复制到两个 span 以便 v4 observation 过滤/聚合
+- 对外 `record()` 签名不变 → 调用方零改动 → 部署只换 jar，三个 `LANGFUSE_*` 环境变量原样沿用
+
+**验证证据**：迁移后 Scores 页 `sql-accuracy` 第一条打分在查询后 <30 秒产生；Tracing 页新 trace 秒级出现；Langfuse "Action required" 面板显示🟢 "Detected V4-compatible instrumentation"。
+
+**经验**：集成第三方平台要**紧跟官方 deprecation 时间线**，不要只靠"数据能显示就 OK"判断——下游管线（评估、搜索、API）可能早已弃用兼容通道。官方 README 里一句 "OpenTelemetry is the only supported way going forward" 要读透。
+
+#### Bug D：2G ECS 深夜 OOM——swap thrashing 导致整机无响应
 
 **现象**：服务器每天凌晨卡死，SSH 连不上，重启后恢复。阿里云监控报"实例存储性能达到规格上限"（磁盘带宽饱和）。
 

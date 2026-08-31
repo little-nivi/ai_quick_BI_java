@@ -2,91 +2,93 @@ package com.nl2sql.observability;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nl2sql.llm.dto.LlmUsage;
+import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.SpanKind;
+import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.context.Scope;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
-import java.time.Instant;
-import java.util.List;
 import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 /**
- * LangFuse 观测组装 + 异步发送（REQ-531/533、ADR D-34/D-36）。
- * 组装 trace（问题/SQL/耗时/置信度/缓存） + generation（token 用量/模型），异步发送，失败静默降级。
+ * Langfuse 观测组装（REQ-531/533、ADR D-34/D-36）。
+ * v4 数据模型：一次查询 = 一条 OTel trace = root span（整体输入输出）
+ * + generation 子 span（模型 / token 用量），属性映射见
+ * https://langfuse.com/integrations/native/opentelemetry 。
+ * trace 级 metadata 复制到每个 span：v4 按 observation 查询过滤，
+ * 仅 root 持有的属性无法在子项上过滤/聚合。
  */
 @Component
 public class LangfuseObservability {
 
     private static final Logger log = LoggerFactory.getLogger(LangfuseObservability.class);
 
-    private final LangfuseClient client;
+    private final LangfuseOtelTracer langfuse;
     private final ObjectMapper objectMapper;
-    private final ExecutorService executor = Executors.newSingleThreadExecutor();
 
-    public LangfuseObservability(LangfuseClient client, ObjectMapper objectMapper) {
-        this.client = client;
+    public LangfuseObservability(LangfuseOtelTracer langfuse, ObjectMapper objectMapper) {
+        this.langfuse = langfuse;
         this.objectMapper = objectMapper;
     }
 
     public void record(String question, String generatedSql, Long latencyMs,
                        boolean cacheHit, String confidenceLevel, String matchedMetric,
                        String role, String model, LlmUsage usage) {
-        if (!client.isEnabled()) {
+        if (!langfuse.isEnabled()) {
             return; // 未配置 key，no-op（降级）
         }
-        executor.submit(() -> {
-            try {
-                String body = buildBatch(question, generatedSql, latencyMs, cacheHit,
-                        confidenceLevel, matchedMetric, role, model, usage);
-                client.send(body);
-            } catch (Exception e) {
-                log.warn("langfuse record failed (degraded, ignored)", e);
+        try {
+            Tracer tracer = langfuse.tracer();
+            Attributes traceMeta = Attributes.builder()
+                    .put("langfuse.trace.metadata.latency_ms", String.valueOf(latencyMs == null ? 0 : latencyMs))
+                    .put("langfuse.trace.metadata.cache_hit", String.valueOf(cacheHit))
+                    .put("langfuse.trace.metadata.confidence_level", confidenceLevel == null ? "" : confidenceLevel)
+                    .put("langfuse.trace.metadata.matched_metric", matchedMetric == null ? "" : matchedMetric)
+                    .put("langfuse.trace.metadata.role", role == null ? "" : role)
+                    .build();
+
+            Span root = tracer.spanBuilder("nl2sql-query")
+                    .setSpanKind(SpanKind.INTERNAL)
+                    .setAttribute("langfuse.trace.name", "nl2sql-query")
+                    .setAttribute("langfuse.observation.input", nullToEmpty(question))
+                    .setAllAttributes(traceMeta)
+                    .startSpan();
+            try (Scope ignored = root.makeCurrent()) {
+                // 在 root 作用域内创建 → 自动成为 root 的子 observation（评估器 isRootObservation 对应 root）
+                Span generation = tracer.spanBuilder("sql-generation")
+                        .setAttribute("langfuse.observation.type", "generation")
+                        .setAttribute("langfuse.observation.input", nullToEmpty(question))
+                        .setAttribute("langfuse.observation.output", nullToEmpty(generatedSql))
+                        .setAttribute("langfuse.observation.model.name",
+                                model == null || model.isBlank() ? "qwen-turbo" : model)
+                        .setAttribute("langfuse.observation.usage_details", usageJson(usage))
+                        .setAllAttributes(traceMeta)
+                        .startSpan();
+                generation.end();
+            } finally {
+                root.setAttribute("langfuse.observation.output", nullToEmpty(generatedSql));
+                root.end();
             }
-        });
+        } catch (Exception e) {
+            log.warn("langfuse record failed (degraded, ignored)", e);
+        }
     }
 
-    private String buildBatch(String question, String sql, Long latencyMs, boolean cacheHit,
-                              String confidenceLevel, String matchedMetric, String role,
-                              String model, LlmUsage usage) throws Exception {
-        String traceId = UUID.randomUUID().toString();
-        String genId = UUID.randomUUID().toString();
-        // LangFuse 要求毫秒精度 ISO-8601（3 位小数），截断纳秒
-        String now = Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MILLIS).toString();
+    /** token 用量 → Langfuse usage_details JSON：{"input":..,"output":..,"total":..}。 */
+    private String usageJson(LlmUsage usage) throws Exception {
+        if (usage == null) {
+            usage = new LlmUsage(0, 0, 0);
+        }
+        return objectMapper.writeValueAsString(Map.of(
+                "input", usage.promptTokens(),
+                "output", usage.completionTokens(),
+                "total", usage.totalTokens()));
+    }
 
-        Map<String, Object> traceBody = Map.of(
-                "id", traceId,
-                "name", "nl2sql-query",
-                "input", question == null ? "" : question,
-                "output", sql == null ? "" : sql,
-                "metadata", Map.of(
-                        "latency_ms", latencyMs == null ? 0 : latencyMs,
-                        "cache_hit", cacheHit,
-                        "confidence_level", confidenceLevel == null ? "" : confidenceLevel,
-                        "matched_metric", matchedMetric == null ? "" : matchedMetric,
-                        "role", role == null ? "" : role));
-
-        Map<String, Object> genBody = Map.of(
-                "id", genId,
-                "traceId", traceId,
-                "name", "sql-generation",
-                "model", model == null ? "qwen-turbo" : model,
-                "input", question == null ? "" : question,
-                "output", sql == null ? "" : sql,
-                "usage", Map.of(
-                        "input", usage == null ? 0 : usage.promptTokens(),
-                        "output", usage == null ? 0 : usage.completionTokens(),
-                        "total", usage == null ? 0 : usage.totalTokens()));
-
-        Map<String, Object> batch = Map.of(
-                "batch", List.of(
-                        Map.of("id", traceId, "type", "trace-create", "timestamp", now, "body", traceBody),
-                        Map.of("id", genId, "type", "generation-create", "timestamp", now,
-                                "body", genBody)
-                ));
-
-        return objectMapper.writeValueAsString(batch);
+    private static String nullToEmpty(String s) {
+        return s == null ? "" : s;
     }
 }

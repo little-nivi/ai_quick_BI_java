@@ -21,6 +21,8 @@
         <java.version>17</java.version>
         <jsqlparser.version>5.0</jsqlparser.version>
         <jjwt.version>0.12.6</jjwt.version>
+        <!-- 覆盖 Spring Boot 管理的 OTel 版本（默认 1.43.0），统一对齐 1.49.0 -->
+        <opentelemetry.version>1.49.0</opentelemetry.version>
     </properties>
 
     <dependencies>
@@ -105,6 +107,17 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <!-- Langfuse v4 观测（REQ-531、ADR D-35）：官方已废弃 legacy /ingestion，
+             Java 端 tracing 唯一支持路径 = OpenTelemetry SDK + OTLP/HTTP 导出 -->
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-sdk</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-exporter-otlp</artifactId>
         </dependency>
 
         <!-- Lombok（可选，减少样板） -->
