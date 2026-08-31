@@ -57,6 +57,7 @@ public class LangfuseObservability {
         String now = Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MILLIS).toString();
 
         Map<String, Object> traceBody = Map.of(
+                "id", traceId,
                 "name", "nl2sql-query",
                 "input", question == null ? "" : question,
                 "output", sql == null ? "" : sql,
@@ -69,6 +70,7 @@ public class LangfuseObservability {
 
         Map<String, Object> genBody = Map.of(
                 "id", genId,
+                "traceId", traceId,
                 "name", "sql-generation",
                 "model", model == null ? "qwen-turbo" : model,
                 "input", question == null ? "" : question,
@@ -82,7 +84,7 @@ public class LangfuseObservability {
                 "batch", List.of(
                         Map.of("id", traceId, "type", "trace-create", "timestamp", now, "body", traceBody),
                         Map.of("id", genId, "type", "generation-create", "timestamp", now,
-                                "traceId", traceId, "body", genBody)
+                                "body", genBody)
                 ));
 
         return objectMapper.writeValueAsString(batch);

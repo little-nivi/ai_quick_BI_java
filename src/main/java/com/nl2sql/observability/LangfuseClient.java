@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestClient;
 
 import java.time.Duration;
@@ -50,19 +51,24 @@ public class LangfuseClient {
         return enabled;
     }
 
-    /** 发送一批观测事件；失败仅记 WARN（降级）。 */
+    /** 发送一批观测事件；打印响应便于排错；失败仅记 WARN（降级）。 */
     public void send(String batchBody) {
         if (!enabled) {
             return;
         }
         try {
-            restClient.post()
+            // ingestion 返回 207 表示"已入队"（异步处理）；body 里含 successes/errors 明细
+            String resp = restClient.post()
                     .uri("/api/public/ingestion")
                     .header("Authorization", authHeader)
                     .header("Content-Type", "application/json")
                     .body(batchBody)
                     .retrieve()
-                    .toBodilessEntity();
+                    .body(String.class);
+            log.info("langfuse batch accepted: {}", resp);
+        } catch (HttpStatusCodeException e) {
+            log.warn("langfuse send rejected: status={}, body={}",
+                    e.getStatusCode(), e.getResponseBodyAsString());
         } catch (Exception e) {
             log.warn("langfuse send failed (degraded, ignored)", e);
         }

@@ -10,7 +10,7 @@ After=syslog.target network.target
 Type=simple
 User=www-data
 EnvironmentFile=/etc/default/nl2sql-app
-ExecStart=/usr/bin/java -Xms480m -Xmx960m -XX:MaxMetaspaceSize=320m -XX:+UseG1GC -jar /opt/nl2sql/nl2sql-app.jar
+ExecStart=/usr/bin/java -Xms256m -Xmx704m -XX:MaxMetaspaceSize=256m -XX:+UseG1GC -jar /opt/nl2sql/nl2sql-app.jar
 Restart=on-failure
 RestartSec=10
 SuccessExitStatus=143
