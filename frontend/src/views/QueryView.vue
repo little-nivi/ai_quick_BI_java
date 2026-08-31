@@ -14,6 +14,23 @@ const result = ref<any>(null)
 const showTrace = ref(false)
 const feedbackSent = ref(false)
 
+const examples = [
+  '华南地区上个月的总订单量',
+  '每个用户的消费金额排名前10',
+  '近7天每天的订单数',
+  '各商品类目的销售额占比'
+]
+function askExample(q: string) {
+  question.value = q
+  ask()
+}
+function reset() {
+  question.value = ''
+  result.value = null
+  showTrace.value = false
+  feedbackSent.value = false
+}
+
 let chart: any = null
 
 function hasDimension(columns: string[], rows: any[][]): boolean {
@@ -88,6 +105,11 @@ async function feedback(type: 'positive' | 'negative') {
       <button @click="ask" :disabled="loading">{{ loading ? '查询中...' : '问数' }}</button>
     </div>
 
+    <div v-if="!result && !loading" class="examples">
+      <span class="examples-label">试试这些问题：</span>
+      <button v-for="ex in examples" :key="ex" class="example-chip" @click="askExample(ex)">{{ ex }}</button>
+    </div>
+
     <div v-if="result?.error" class="error-box">
       <p>{{ result.error }}</p>
       <div v-if="result.clarification" class="clarify">
@@ -126,6 +148,7 @@ async function feedback(type: 'positive' | 'negative') {
       <div class="sql-box">生成 SQL：{{ result.sql }}</div>
 
       <div class="actions">
+        <button class="btn-primary" @click="reset">新查询</button>
         <button @click="showTrace = !showTrace">查询依据</button>
         <button v-if="!feedbackSent" @click="feedback('positive')">有用</button>
         <button v-if="!feedbackSent" @click="feedback('negative')">无用</button>
@@ -147,6 +170,10 @@ async function feedback(type: 'positive' | 'negative') {
 .input-row { display: flex; gap: 12px; }
 .input-row input { flex: 1; padding: 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 15px; }
 .input-row button { padding: 12px 24px; background: #1677ff; color: #fff; border: none; border-radius: 6px; cursor: pointer; }
+.examples { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.examples-label { font-size: 13px; color: #999; }
+.example-chip { padding: 6px 14px; background: #f5f5f5; border: 1px solid #e8e8e8; border-radius: 16px; font-size: 13px; color: #333; cursor: pointer; transition: all 0.2s; }
+.example-chip:hover { background: #e6f4ff; border-color: #1677ff; color: #1677ff; }
 .error-box { margin-top: 20px; padding: 16px; background: #fff1f0; border-radius: 6px; }
 .clarify button { margin: 4px; }
 .result-box { margin-top: 20px; }
@@ -162,6 +189,7 @@ async function feedback(type: 'positive' | 'negative') {
 .sql-box { margin-top: 12px; padding: 12px; background: #f5f5f5; border-radius: 6px; font-family: monospace; font-size: 13px; }
 .actions { margin-top: 12px; display: flex; gap: 8px; }
 .actions button { padding: 6px 16px; border: 1px solid #ddd; background: #fff; border-radius: 4px; cursor: pointer; }
+.actions .btn-primary { background: #1677ff; color: #fff; border-color: #1677ff; }
 .sent { color: #52c41a; font-size: 13px; }
 .trace { margin-top: 12px; padding: 12px; background: #fafafa; border-radius: 6px; font-size: 13px; }
 </style>
