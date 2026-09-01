@@ -10,6 +10,8 @@ import org.springframework.stereotype.Service;
 
 import java.sql.PreparedStatement;
 import java.sql.Statement;
+import java.util.List;
+import java.util.Map;
 
 /**
  * 指标口径审批流（REQ-524、D-29、SR-9）：创建(draft) → 审批(published) → 废弃(deprecated)。
@@ -22,6 +24,14 @@ public class MetricGovernanceService {
 
     public MetricGovernanceService(JdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
+    }
+
+    /** REQ-410 查询全部指标，按 id 倒序（新指标在前）。 */
+    public List<Map<String, Object>> listAll() {
+        return jdbcTemplate.queryForList(
+                "SELECT metric_id, metric_name, synonyms, expression, related_tables, definition, " +
+                        "template_sql, version, status, approved_by, approved_at, created_by " +
+                        "FROM metric_definitions ORDER BY metric_id DESC");
     }
 
     public long create(String metricName, String synonyms, String expression,

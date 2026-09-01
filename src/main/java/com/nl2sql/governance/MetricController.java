@@ -6,12 +6,14 @@ import com.nl2sql.common.TraceIdHolder;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -25,6 +27,13 @@ public class MetricController {
 
     public MetricController(MetricGovernanceService service) {
         this.service = service;
+    }
+
+    /** REQ-410 指标列表（面试演示时不再需要登 MySQL 查 metric_id）。 */
+    @GetMapping
+    public ApiResponse<List<Map<String, Object>>> list() {
+        String traceId = TraceIdHolder.getOrCreate();
+        return ApiResponse.ok(service.listAll(), traceId);
     }
 
     @PostMapping
