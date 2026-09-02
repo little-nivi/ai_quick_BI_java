@@ -179,7 +179,9 @@ public class QueryService {
                 }
                 sqlValidator.validate(corrected);
                 executedSql = corrected;
-                result = sqlExecutor.execute(limitInjector.inject(permissionInjector.inject(corrected)));
+                // 同步 scopedSql，确保后续审计/会话记录的是「真正发给 MySQL 的那版」（含 LIMIT + 权限注入）
+                scopedSql = limitInjector.inject(permissionInjector.inject(corrected));
+                result = sqlExecutor.execute(scopedSql);
             }
 
             long latencyMs = System.currentTimeMillis() - start;
@@ -188,12 +190,13 @@ public class QueryService {
             Trace trace = traceBuilder.build(result.columns(), matchedMetric, confidence, confidenceLevel);
 
             // REQ-508 审计 + REQ-519 会话写穿透 + REQ-531 观测
-            auditService.record(question, executedSql, latencyMs, ipAddress, false);
-            sessionRecorder.record(question, executedSql, false);
-            observability.record(question, executedSql, latencyMs, false, confidenceLevel,
+            // 统一存 scopedSql（含 LIMIT + 权限注入，是实际发给 MySQL 的版本），消除历史记录中「有的 LIMIT 有的不带」的格式漂移
+            auditService.record(question, scopedSql, latencyMs, ipAddress, false);
+            sessionRecorder.record(question, scopedSql, false);
+            observability.record(question, scopedSql, latencyMs, false, confidenceLevel,
                     matchedMetric, currentRole(), model, usage);
 
-            QueryResponse response = new QueryResponse(question, limitInjector.inject(permissionInjector.inject(executedSql)),
+            QueryResponse response = new QueryResponse(question, scopedSql,
                     result.columns(), result.rows(), result.rows().size(), latencyMs, matchedMetric,
                     confidence, trace, false);
 

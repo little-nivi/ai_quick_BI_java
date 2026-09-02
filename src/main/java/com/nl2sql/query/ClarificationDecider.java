@@ -56,8 +56,12 @@ public class ClarificationDecider {
             return new Decision(true, "缺语义锚点：未命中指标且领域关键词<" + MIN_KEYWORD_CHARS + "字");
         }
 
-        // 规则 2：LLM 自己说不是查询，但我们检测到了锚点和指标候选 → 让 LLM 当裁判问一下，别直接拒
-        if (Boolean.FALSE.equals(isQuery) && !metricMatched && keywordChars >= MIN_KEYWORD_CHARS) {
+        // 规则 2：LLM 自己说不是查询，但我们检测到了领域关键词（锚点强度足够）→ 降级澄清，别直接 4001。
+        // 注意：这里故意不写 !metricMatched。规则 2 需要覆盖两种都可能出现 isQuery=false 的场景：
+        //   (a) metricMatched=false（比如"对比一下 top5"，没有指标名但有领域词）
+        //   (b) metricMatched=true（比如"每个的多少 已完成订单量"，指标命中了但 LLM 觉得模板缺维度补不了）
+        // 真非问数（keywordChars < 2，比如"你好"）由规则 1 兜底，不会走到这里。
+        if (Boolean.FALSE.equals(isQuery) && keywordChars >= MIN_KEYWORD_CHARS) {
             return new Decision(true, "LLM 判非问数但检测到领域关键词，降级澄清");
         }
 
