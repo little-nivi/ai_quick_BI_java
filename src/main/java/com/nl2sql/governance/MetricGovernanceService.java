@@ -34,6 +34,13 @@ public class MetricGovernanceService {
                         "FROM metric_definitions ORDER BY metric_id DESC");
     }
 
+    /** 已审批发布的指标（匹配/澄清候选用）。只返回到澄清 prompt 真正用的字段，避免敏感 SQL 模板外泄。 */
+    public List<Map<String, Object>> listPublished() {
+        return jdbcTemplate.queryForList(
+                "SELECT metric_id, metric_name, synonyms, definition, related_tables " +
+                        "FROM metric_definitions WHERE status = 'published' ORDER BY metric_id DESC");
+    }
+
     public long create(String metricName, String synonyms, String expression,
                        String relatedTables, String definition, String templateSql) {
         KeyHolder keyHolder = new GeneratedKeyHolder();

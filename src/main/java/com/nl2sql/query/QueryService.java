@@ -7,6 +7,8 @@ import com.nl2sql.llm.dto.LlmResponse;
 import com.nl2sql.llm.dto.LlmUsage;
 import com.nl2sql.observability.LangfuseObservability;
 import com.nl2sql.auth.UserContext;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -20,6 +22,8 @@ import java.util.List;
 @Service
 public class QueryService {
 
+    private static final Logger log = LoggerFactory.getLogger(QueryService.class);
+
     private final SemanticCache semanticCache;
     private final DegradationHandler degradationHandler;
     private final MetricMatcher metricMatcher;
@@ -27,6 +31,7 @@ public class QueryService {
     private final SqlGenerator sqlGenerator;
     private final IntentConfidenceEvaluator evaluator;
     private final ClarificationGenerator clarificationGenerator;
+    private final ClarificationDecider clarificationDecider;
     private final SelfCorrector selfCorrector;
     private final SqlValidator sqlValidator;
     private final PermissionInjector permissionInjector;
@@ -45,6 +50,7 @@ public class QueryService {
                         SqlGenerator sqlGenerator,
                         IntentConfidenceEvaluator evaluator,
                         ClarificationGenerator clarificationGenerator,
+                        ClarificationDecider clarificationDecider,
                         SelfCorrector selfCorrector,
                         SqlValidator sqlValidator,
                         PermissionInjector permissionInjector,
@@ -62,6 +68,7 @@ public class QueryService {
         this.sqlGenerator = sqlGenerator;
         this.evaluator = evaluator;
         this.clarificationGenerator = clarificationGenerator;
+        this.clarificationDecider = clarificationDecider;
         this.selfCorrector = selfCorrector;
         this.sqlValidator = sqlValidator;
         this.permissionInjector = permissionInjector;
@@ -94,9 +101,10 @@ public class QueryService {
         String confidenceLevel = null;
         boolean cacheHit = false;
 
+        MetricMatcher.MetricMatch match = null;
         try {
             // REQ-506 指标匹配 + REQ-510 术语映射
-            MetricMatcher.MetricMatch match = metricMatcher.match(question);
+            match = metricMatcher.match(question);
             String questionForLlm = glossaryMatcher.apply(question);
 
             // REQ-501/506 生成（含 is_query + confidence，一次调用）；超时→降级链 REQ-518
@@ -132,11 +140,20 @@ public class QueryService {
             generatedSql = llm.sql();
             confidence = llm.confidence();
 
-            // REQ-511 意图识别 + 置信度分级
+            // REQ-511 意图识别 + 置信度分级 + ClarificationDecider 兜底
+            // 原流程：evaluator 抛 4001 直接拒、抛 4002 才澄清；问题在于 qwen 常把缺维度的问句
+            //       判成 isQuery=false（4001）或 confidence=0.9（跳过低置信阈值），导致澄清无法触发。
             try {
                 confidenceLevel = evaluator.evaluate(llm);
             } catch (BizException e) {
-                if (e.getErrorCode() == ErrorCode.LOW_CONFIDENCE) {
+                boolean metricHit = match != null;
+                ClarificationDecider.Decision decider = clarificationDecider.decide(
+                        question, metricHit, llm.isQuery(), llm.confidence());
+                if (e.getErrorCode() == ErrorCode.LOW_CONFIDENCE || decider.shouldClarify()) {
+                    if (log.isDebugEnabled()) {
+                        log.debug("clarify trigger: reason={}, q=\"{}\", isQuery={}, confidence={}",
+                                decider.reason(), question, llm.isQuery(), llm.confidence());
+                    }
                     Clarification clarification = clarificationGenerator.generate(question);
                     throw new ClarifyException(clarification);
                 }
