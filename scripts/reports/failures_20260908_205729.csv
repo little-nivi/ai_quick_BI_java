@@ -1,0 +1,2 @@
+﻿case_id,category,question,code,fail_reason,sql
+87,模糊语义查询,下单量,4001,"期望 code=(2000,) 实际 4001",
