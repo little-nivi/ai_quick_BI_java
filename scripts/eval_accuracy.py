@@ -49,6 +49,7 @@ CAT_PERM = "权限隔离测试"
 CAT_PERF = "大数据量性能测试"
 CAT_CACHE = "缓存命中测试"
 CAT_CONC = "并发测试"
+CAT_JOIN = "JOIN多表查询"
 
 NORMAL_CASES = [
     # ---- 1. 单表简单查询（20）----
@@ -161,6 +162,37 @@ NORMAL_CASES = [
     (130, "销量排名前100", ["LIMIT"], (2000,)),
 ]
 
+# ---- 12. JOIN多表查询（20）：阶段C 用例集（id 201-220）----
+# 判定：hints=["JOIN"] 校验 SQL 含 JOIN；危险操作用 "NOT_2000"
+# 注意：问题文案必须避开指标同义词（订单数/订单量/销售额/客单价/销量/退款金额），
+#       否则命中指标模板→走 generateWithTemplate→LLM 被锁死在单表，不会 JOIN。
+JOIN_CASES = [
+    # customers JOIN（6 条）：客户类型/等级维度
+    (201, "企业类型客户下了多少笔交易", ["JOIN"], (2000,)),
+    (202, "金卡等级客户平均每笔花多少钱", ["JOIN"], (2000,)),
+    (203, "钻石等级客户总消费了多少钱", ["JOIN"], (2000,)),
+    (204, "个人类型客户的交易笔数", ["JOIN"], (2000,)),
+    (205, "企业类型客户平均交易金额", ["JOIN"], (2000,)),
+    (206, "银卡等级客户买了多少件商品", ["JOIN"], (2000,)),
+    # products JOIN（6 条）：商品品类维度
+    (207, "数码类商品总共卖出去了多少件", ["JOIN"], (2000,)),
+    (208, "服饰类商品总金额是多少", ["JOIN"], (2000,)),
+    (209, "食品类商品有多少笔交易", ["JOIN"], (2000,)),
+    (210, "家居类商品平均每笔交易金额", ["JOIN"], (2000,)),
+    (211, "数码类商品最贵的一笔交易是多少", ["JOIN"], (2000,)),
+    (212, "服饰类商品交易笔数统计", ["JOIN"], (2000,)),
+    # 三表 JOIN（4 条）：customers × products
+    (213, "企业类型客户买的数码类商品交易笔数", ["JOIN"], (2000,)),
+    (214, "金卡等级客户买的服饰类商品总件数", ["JOIN"], (2000,)),
+    (215, "钻石等级客户买的家居类商品总金额", ["JOIN"], (2000,)),
+    (216, "个人类型客户买的食品类商品交易数", ["JOIN"], (2000,)),
+    # 边界/危险（4 条）
+    (217, "删除某客户的所有订单", [], "NOT_2000"),
+    (218, "修改企业客户的订单数据", [], "NOT_2000"),
+    (219, "各等级客户的交易笔数排名", ["JOIN"], (2000,)),
+    (220, "各品类商品卖出件数排名", ["JOIN"], (2000,)),
+]
+
 
 def category_of(cid: int) -> str:
     if cid <= 20:
@@ -175,6 +207,8 @@ def category_of(cid: int) -> str:
         return CAT_NEST
     if cid <= 110:
         return CAT_EDGE
+    if 201 <= cid <= 220:
+        return CAT_JOIN
     return CAT_PERF
 
 
@@ -222,6 +256,7 @@ CONC_CASES = [
 
 # 冒烟子集（--quick）
 QUICK_NORMAL_IDS = {1, 21, 61, 83, 93, 101, 104, 107}
+QUICK_JOIN_IDS = {201, 207}  # JOIN 冒烟：customers JOIN + products JOIN 各 1 条
 QUICK_CACHE = [(131, "总销售额是多少", 3)]
 QUICK_CONC = [(141, "5人同时问总销售额", ["总销售额是多少"] * 5, 5)]
 
@@ -461,7 +496,7 @@ def write_reports(results, summary, outdir):
     lines = [
         "# NL2SQL 评测报告", "",
         f"- 时间：{time.strftime('%Y-%m-%d %H:%M:%S')}",
-        f"- 用例：{summary['total']} 条（JOIN 20 条待造数跳过）",
+        f"- 用例：{summary['total']} 条",
         f"- **准确率：{summary['passed']}/{summary['total']} = {summary['accuracy']}%**（达标线 80%）",
         "",
         "## 延迟分位数（服务端 latencyMs）", "",
@@ -495,7 +530,7 @@ def main():
     parser.add_argument("--username", default="admin")
     parser.add_argument("--password", default="admin123")
     parser.add_argument("--quick", action="store_true", help="只跑冒烟子集（~3 分钟）")
-    parser.add_argument("--category", choices=["normal", "perm", "cache", "conc"],
+    parser.add_argument("--category", choices=["normal", "join", "perm", "cache", "conc"],
                         help="只跑某一组")
     parser.add_argument("--outdir", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "reports"))
     args = parser.parse_args()
@@ -508,13 +543,20 @@ def main():
         print("\n--- 冒烟模式 ---")
         sub = [c for c in NORMAL_CASES if c[0] in QUICK_NORMAL_IDS]
         results += run_normal(args.base, token, sub)
+        join_sub = [c for c in JOIN_CASES if c[0] in QUICK_JOIN_IDS]
+        print(f"\n--- JOIN 冒烟（{len(join_sub)} 条）---")
+        results += run_normal(args.base, token, join_sub)
         results += run_cache(args.base, token, QUICK_CACHE)
         results += run_conc(args.base, token, QUICK_CONC)
     else:
         if args.category in (None, "normal"):
-            n = len([c for c in NORMAL_CASES])
+            n = len(NORMAL_CASES)
             print(f"\n--- 常规组（{n} 条）---")
             results += run_normal(args.base, token, NORMAL_CASES)
+        if args.category in (None, "join"):
+            n_join = len(JOIN_CASES)
+            print(f"\n--- JOIN 组（{n_join} 条）---")
+            results += run_normal(args.base, token, JOIN_CASES)
         if args.category in (None, "perm"):
             print("\n--- 权限组（10 条）---")
             results += run_perm(args.base)

@@ -65,9 +65,10 @@ public class ClarificationDecider {
             return new Decision(true, "LLM 判非问数但检测到领域关键词，降级澄清");
         }
 
-        // 规则 3：置信度 <0.75 且未命中指标 → 走澄清（原 0.60 放宽到 0.75，更敏感）
-        if (!metricMatched && confidence != null && confidence < 0.75) {
-            return new Decision(true, "未命中指标且 confidence<0.75");
+        // 规则 3：置信度 <0.6 且未命中指标 → 走澄清（JOIN 多表场景 LLM 信心天然偏低，阈值从 0.75 放宽到 0.6）
+        // 阶段C 修正：JOIN 问题不命中指标但领域关键词丰富时，confidence 0.6-0.75 应允许通过，避免过度澄清
+        if (!metricMatched && confidence != null && confidence < 0.6) {
+            return new Decision(true, "未命中指标且 confidence<0.6");
         }
 
         return new Decision(false, null);
