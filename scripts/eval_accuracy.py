@@ -50,6 +50,7 @@ CAT_PERF = "大数据量性能测试"
 CAT_CACHE = "缓存命中测试"
 CAT_CONC = "并发测试"
 CAT_JOIN = "JOIN多表查询"
+CAT_CLARIFY = "澄清触发测试"
 
 NORMAL_CASES = [
     # ---- 1. 单表简单查询（20）----
@@ -160,6 +161,25 @@ NORMAL_CASES = [
     (128, "全量订单平均金额", ["AVG"], (2000,)),
     (129, "各地区平均金额", ["GROUP BY"], (2000,)),
     (130, "销量排名前100", ["LIMIT"], (2000,)),
+    # ---- 13. 澄清触发测试（5）：期望触发 ClarificationDecider 或 IntentConfidenceEvaluator → 4002 ----
+    # 设计：这些问句有问数意图但缺指标锚点/聚合维度/时间范围，应该触发澄清而非直接给 SQL
+    (301, "对比一下 top5", [], (4002,)),              # 缺指标锚点：对比什么？
+    (302, "每个的多少", [], (4002,)),                 # 缺指标：哪个每个？哪个度量？
+    (303, "销量排名前", [], (4002,)),                  # 缺具体数量：前几？
+    (304, "各地区的情况", [], (4002,)),                # 缺聚合维度：什么情况？
+    (305, "最近怎么样", [], (4002,)),                  # 缺时间范围+指标：最近多久？什么指标？
+    # ---- 14. 模糊语义同义改写（10）：阶段A 扩充，测 LLM 对同义表达的鲁棒性 ----
+    # 这些用例和 76-90 的模糊语义用例是同义改写，期望生成相同结构的 SQL
+    (306, "销量最高的商品是什么", [], (2000,)),         # 同 "卖得最好的商品"
+    (307, "销售额排在第一的地区", ["ORDER BY"], (2000,)), # 同 "销售额最高的地区"
+    (308, "订单数量最少的渠道", ["ORDER BY"], (2000,)),  # 同 "订单数量最少的渠道"
+    (309, "单价最高的商品排行", ["ORDER BY"], (2000,)),  # 同 "最贵的商品"
+    (310, "单价最低的商品", ["ORDER BY"], (2000,)),      # 同 "最便宜的商品"
+    (311, "成交总额", ["SUM"], (2000,)),                 # 同 "成交金额"
+    (312, "已完成的订单总额", ["SUM"], (2000,)),         # 同 "完成的订单"
+    (313, "退回到库的订单数", ["COUNT"], (2000,)),        # 同 "退货订单"
+    (314, "高消费客户群体", [], (2000,)),                # 同 "高价值客户"
+    (315, "频繁下单的用户", [], (2000,)),                # 同 "复购用户"
 ]
 
 # ---- 12. JOIN多表查询（20）：阶段C 用例集（id 201-220）----
@@ -191,6 +211,22 @@ JOIN_CASES = [
     (218, "修改企业客户的订单数据", [], "NOT_2000"),
     (219, "各等级客户的交易笔数排名", ["JOIN"], (2000,)),
     (220, "各品类商品卖出件数排名", ["JOIN"], (2000,)),
+    # ---- 阶段A 扩充：复杂 JOIN 场景（10 条，id 221-230）----
+    # LEFT JOIN 场景（可能有客户没有订单）
+    (221, "所有客户的订单数（含未下单客户）", ["JOIN"], (2000,)),
+    (222, "所有商品的销量统计（含未售出商品）", ["JOIN"], (2000,)),
+    # 子查询 + JOIN 场景
+    (223, "消费金额超过平均值的客户有哪些", ["JOIN"], (2000,)),
+    (224, "销量超过平均销量的商品有哪些", ["JOIN"], (2000,)),
+    # HAVING + JOIN 场景
+    (225, "订单数超过100的客户等级", ["JOIN"], (2000,)),
+    (226, "销售额超过10万的商品品类", ["JOIN"], (2000,)),
+    # 排序 + LIMIT + JOIN 场景
+    (227, "消费金额最高的前3个客户", ["JOIN"], (2000,)),
+    (228, "销售额排名前5的商品品类", ["JOIN"], (2000,)),
+    # 时间范围 + JOIN 场景
+    (229, "上个月企业客户的订单数", ["JOIN"], (2000,)),
+    (230, "本月数码类商品的销售额", ["JOIN"], (2000,)),
 ]
 
 
@@ -207,8 +243,12 @@ def category_of(cid: int) -> str:
         return CAT_NEST
     if cid <= 110:
         return CAT_EDGE
-    if 201 <= cid <= 220:
+    if 201 <= cid <= 230:
         return CAT_JOIN
+    if 301 <= cid <= 305:
+        return CAT_CLARIFY
+    if 306 <= cid <= 315:
+        return CAT_FUZZY
     return CAT_PERF
 
 
@@ -326,6 +366,118 @@ def check_hints(sql, hints):
     return (len(missing) == 0), (f"SQL 缺少关键词 {missing}" if missing else "")
 
 
+# ---- Schema 字段白名单（阶段A：Schema 幻觉检测）----
+# 来源：V1__init_orders.sql + V7__m6_join_tables.sql
+SCHEMA_FIELDS = {
+    "orders": {"order_id", "user_id", "product_id", "amount", "quantity",
+               "price", "order_date", "region", "status", "channel"},
+    "customers": {"id", "name", "type", "level", "register_date"},
+    "products": {"id", "name", "category", "price"},
+}
+# SQL 聚合函数和关键字白名单（不算字段幻觉）
+SQL_KEYWORDS_WHITELIST = {
+    "COUNT", "SUM", "AVG", "MAX", "MIN", "ROUND", "DISTINCT",
+    "AS", "FROM", "WHERE", "GROUP", "BY", "ORDER", "HAVING", "LIMIT",
+    "JOIN", "LEFT", "RIGHT", "INNER", "ON", "AND", "OR", "NOT", "IN",
+    "BETWEEN", "LIKE", "IS", "NULL", "DESC", "ASC", "SELECT", "OFFSET",
+    "DATE", "YEAR", "MONTH", "DAY", "NOW", "CURDATE", "DATE_SUB", "DATE_ADD",
+    "INTERVAL", "WEEK", "HOUR", "COALESCE",
+    "CONCAT", "IF", "CASE", "WHEN", "THEN", "ELSE", "END",
+    "TOTAL", "CNT", "TOTAL_AMOUNT", "TOTAL_QUANTITY", "TOTAL_SALES",
+    "ORDER_COUNT", "TOTAL_ORDERS", "AVG_AMOUNT", "MAX_AMOUNT", "MIN_AMOUNT",
+    "SALES", "AMOUNT", "QUANTITY", "PRICE", "REGION", "STATUS", "CHANNEL",
+    "ORDER_DATE", "USER_ID", "PRODUCT_ID", "ORDER_ID", "NAME", "TYPE", "LEVEL",
+    "REGISTER_DATE", "CATEGORY", "ID", "CNT", "RANK",
+    # 阶段A 修复：补充 MySQL 函数名，避免被误判为幻觉字段
+    "CURRENT_DATE", "CURRENT_TIMESTAMP", "CURRENT_TIME",
+    "DATE_FORMAT", "STR_TO_DATE", "TIME_FORMAT",
+    "YEARWEEK", "WEEKOFYEAR", "WEEK", "DAYOFWEEK", "DAYOFMONTH", "DAYOFYEAR",
+    "TRUNCATE", "FLOOR", "CEIL", "CEILING", "ABS", "MOD", "POWER", "SQRT",
+    "UPPER", "LOWER", "SUBSTRING", "SUBSTR", "TRIM", "LTRIM", "RTRIM",
+    "LENGTH", "CHAR_LENGTH", "REPLACE", "LEFT", "RIGHT",
+    "UNIX_TIMESTAMP", "FROM_UNIXTIME", "TIMESTAMPDIFF", "TIMESTAMPADD",
+    "DATEDIFF", "TIMEDIFF",
+    "WITH", "RECURSIVE",
+    "BOOLEAN", "TRUE", "FALSE",
+    "USING", "NATURAL", "CROSS", "SELF", "FULL",
+    "EXPLAIN", "DESCRIBE", "SHOW",
+    "BINARY", "COLLATE", "CHARSET",
+    "CAST", "CONVERT",
+    "EXISTS", "ALL", "ANY", "SOME",
+    "UNION", "INTERSECT", "EXCEPT",
+    "VALUES", "INSERT", "UPDATE", "DELETE", "INTO",
+    "DATABASE", "SCHEMA", "TABLE", "COLUMN", "INDEX", "VIEW",
+}
+
+
+def detect_schema_hallucination(sql: str) -> tuple:
+    """检测 SQL 是否引用了不存在的字段（Schema 幻觉）。
+    返回 (ok, reason)：ok=True 表示无幻觉，ok=False 表示检测到幻觉字段。
+    简化实现：用正则提取 SELECT/WHERE/ON 后的标识符，和白名单比对。
+    关键修复（阶段A）：
+      1. 跳过引号内的字符串值（'completed' 这种是 WHERE 条件值，不是字段）
+      2. 补充 MySQL 函数名白名单（CURRENT_DATE/DATE_FORMAT/YEARWEEK/TRUNCATE 等）
+    """
+    if not sql:
+        return True, ""
+    import re
+    # 阶段A 修复 1：先剥离引号内的字符串值，避免把 'completed' 误判为字段
+    # 匹配单引号或双引号内的内容，替换为占位符
+    cleaned_sql = re.sub(r"'[^']*'", " 'STR' ", sql)
+    cleaned_sql = re.sub(r'"[^"]*"', ' "STR" ', cleaned_sql)
+    # 提取所有标识符（字母+下划线+数字，长度>=2，不含 SQL 关键字）
+    pattern = r'\b([a-zA-Z_][a-zA-Z0-9_]*)\b'
+    tokens = re.findall(pattern, cleaned_sql)
+    # 收集所有表的字段做白名单
+    all_fields = set()
+    for fields in SCHEMA_FIELDS.values():
+        all_fields.update(f.lower() for f in fields)
+    # 加上常见别名（表名单数/复数、字段缩写）
+    all_fields.update({"o", "c", "p", "t", "s", "cnt", "total", "sales",
+                       "amount", "quantity", "price", "region", "status",
+                       "channel", "order_date", "user_id", "product_id",
+                       "order_id", "name", "type", "level", "register_date",
+                       "category", "id", "str"})
+    hallucinated = []
+    for tok in tokens:
+        tok_lower = tok.lower()
+        # 跳过 SQL 关键字、函数名、数字、单字母别名
+        if tok.upper() in SQL_KEYWORDS_WHITELIST:
+            continue
+        if tok_lower in all_fields:
+            continue
+        # 跳过表名（orders/customers/products）
+        if tok_lower in SCHEMA_FIELDS:
+            continue
+        if tok_lower in ("o", "c", "p", "t", "s", "cnt", "total", "sales",
+                         "amount", "quantity", "price", "region", "status",
+                         "channel", "name", "type", "level", "category", "id",
+                         "str"):
+            continue
+        # 跳过中文别名（LLM 常用中文做 AS 别名）
+        if any('\u4e00' <= ch <= '\u9fff' for ch in tok):
+            continue
+        # 跳过纯数字
+        if tok.isdigit():
+            continue
+        # 跳过 LLM 常用的英文别名（形如 xxx_count/total_xxx/xxx_amount）
+        if any(tok_lower.endswith(suffix) for suffix in
+               ("_count", "_amount", "_sales", "_total", "_quantity",
+                "_cnt", "_rank", "_avg", "_max", "_min")):
+            continue
+        # 跳过 refund_count/refund_amount 这类语义别名
+        if tok_lower.startswith(("refund", "order", "total", "avg",
+                                 "max", "min", "sales", "cnt")):
+            continue
+        # 跳过格式字符串（%Y %m %d 等，DATE_FORMAT 的参数）
+        if tok.startswith("%") or tok_lower in ("y", "m", "d", "h", "i", "s"):
+            continue
+        hallucinated.append(tok)
+    if hallucinated:
+        return False, f"Schema 幻觉字段: {hallucinated[:5]}"
+    return True, ""
+
+
 def run_normal(base, token, cases) -> List[Result]:
     results = []
     for cid, q, hints, acceptable in cases:
@@ -341,6 +493,11 @@ def run_normal(base, token, cases) -> List[Result]:
                 ok, reason2 = check_hints(sql, hints)
                 if not ok:
                     passed, reason = False, reason2
+            if passed and code == 2000 and sql:
+                # 阶段A：Schema 幻觉检测
+                ok, reason3 = detect_schema_hallucination(sql)
+                if not ok:
+                    passed, reason = False, reason3
             if passed and cat == CAT_PERF and (lat or 0) > 30000:
                 passed, reason = False, f"性能用例 latency={lat}ms > 30s"
         results.append(Result(cid, q, cat, code, sql, lat, rtt,
@@ -374,27 +531,45 @@ def run_perm(base) -> List[Result]:
 
 
 def run_cache(base, token, cases) -> List[Result]:
+    """缓存组：每条用例生成 times 个 Result，第 1 次 cache_hit=False（未命中），后续 cache_hit=True（命中）。
+    修复阶段A口径bug：之前只生成 1 个 Result 硬编码 cache_hit=True，导致命中延迟统计失真。"""
     results = []
     for cid, q, times in cases:
-        hits, hit_lats, first_lat, codes = 0, [], None, []
+        hits, hit_lats, miss_lats, codes = 0, [], [], []
         for i in range(times):
             code, inner, rtt, err = ask(base, token, q)
             codes.append(code)
             lat = inner.get("latencyMs")
+            actual_hit = inner.get("cacheHit")
             if i == 0:
-                first_lat = lat
-            elif inner.get("cacheHit"):
-                hits += 1
-                hit_lats.append(lat or 0)
+                # 第一次提问：未命中缓存
+                miss_lats.append(lat or 0)
+                results.append(Result(cid, q, CAT_CACHE, code, inner.get("sql"),
+                                      lat, rtt, False, code == 2000,
+                                      "" if code == 2000 else f"首次 code={code}",
+                                      extra={"attempt": "miss"}))
+            else:
+                # 后续提问：期望命中缓存
+                if actual_hit:
+                    hits += 1
+                    hit_lats.append(lat or 0)
+                results.append(Result(cid, q, CAT_CACHE, code, inner.get("sql"),
+                                      lat, rtt, actual_hit, code == 2000 and actual_hit,
+                                      "" if (code == 2000 and actual_hit) else f"第{i+1}次 code={code} hit={actual_hit}",
+                                      extra={"attempt": "hit", "expected_hit": True}))
             time.sleep(0.3)
         passed = (hits == times - 1) and codes and codes[0] == 2000
         reason = "" if passed else f"期望 {times-1} 次缓存命中，实际 {hits}，codes={codes}"
-        results.append(Result(cid, q, CAT_CACHE, codes[-1] if codes else None, None,
-                              first_lat, 0, True, passed, reason,
-                              extra={"repeat_times": times, "hit_count": hits,
-                                     "hit_avg_latency_ms": (int(statistics.mean(hit_lats))
-                                                            if hit_lats else None)}))
-        print(f"  [{'PASS' if passed else 'FAIL'}] #{cid} {q} → 命中 {hits}/{times-1}")
+        # 在最后一个 Result 的 extra 里写入汇总
+        if results:
+            results[-1].extra.update({
+                "repeat_times": times, "hit_count": hits,
+                "hit_avg_latency_ms": (int(statistics.mean(hit_lats)) if hit_lats else None),
+                "miss_avg_latency_ms": (int(statistics.mean(miss_lats)) if miss_lats else None),
+            })
+        print(f"  [{'PASS' if passed else 'FAIL'}] #{cid} {q} → 命中 {hits}/{times-1} "
+              f"miss_lat={miss_lats[0] if miss_lats else 'N/A'}ms "
+              f"hit_avg={int(statistics.mean(hit_lats)) if hit_lats else 'N/A'}ms")
     return results
 
 
