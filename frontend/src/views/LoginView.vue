@@ -37,7 +37,7 @@ async function login() {
 </template>
 
 <style scoped>
-.login-page { display: flex; align-items: center; justify-content: center; min-height: 100vh; background: #f5f5f5; }
+.login-page { flex: 1; display: flex; align-items: center; justify-content: center; background: #f5f5f5; }
 .login-card { background: #fff; padding: 40px; border-radius: 8px; width: 320px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
 .login-card h2 { text-align: center; margin-bottom: 8px; }
 input { padding: 10px; border: 1px solid #ddd; border-radius: 4px; }

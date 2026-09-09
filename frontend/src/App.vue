@@ -43,6 +43,9 @@ function logout() {
       <slot />
       <router-view />
     </main>
+    <footer class="footer">
+      <a href="https://beian.miit.gov.cn" target="_blank" rel="noopener noreferrer">冀ICP备2026035555号</a>
+    </footer>
   </div>
 </template>
 
@@ -56,5 +59,8 @@ function logout() {
 .user { margin-left: auto; display: flex; align-items: center; gap: 12px; }
 .role-badge { background: #1677ff; color: #fff; padding: 2px 10px; border-radius: 12px; font-size: 12px; }
 .scope { font-size: 12px; color: #666; }
-.content { flex: 1; padding: 20px; }
+.content { flex: 1; padding: 20px; display: flex; flex-direction: column; }
+.footer { padding: 10px 20px; border-top: 1px solid #eee; text-align: center; font-size: 12px; }
+.footer a { color: #666; text-decoration: none; }
+.footer a:hover { color: #1677ff; }
 </style>
