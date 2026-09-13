@@ -4,7 +4,6 @@
 > 版本：v2.0（终版） 日期：2026-09-09
 > 关联文件：
 > - `docs/NL2SQL项目测试框架_简化版.md` — 测什么（指标定义+判定标准）
-> - `docs/测试执行保姆级教程.md` — 怎么操作（命令+步骤）
 > - `scripts/eval_accuracy.py` — 自动执行器（175 条定义用例，执行后展开 187 条 Result）
 > - `scripts/eval_result_compare.py` — 执行级结果比对器（20 条代表用例，需在服务器跑）
 > - `scripts/generate_customers.py` — JOIN 数据灌入器（2000 条 customers，需在服务器跑）
@@ -81,15 +80,17 @@ curl -s -w "\nHTTP=%{http_code}\n" \
 ```powershell
 conda activate ai_agent
 cd d:\mywork\20260818_java_agent
+$env:NL2SQL_BASE="http://<ECS公网IP>"   # 本地开发机连远程服务器，当前终端生效一次
 python scripts\eval_accuracy.py --quick
 ```
 
-> 脚本默认连公网 nginx `http://123.57.53.23`，本地跑无需 `--base`。
+> 脚本默认连本机 `http://127.0.0.1:8080`；本地开发机跑远程环境时，用环境变量 `NL2SQL_BASE` 或 `--base http://<ECS公网IP>` 指定。
 
 ### 全量评测（本地或服务器均可）
 
 ```powershell
-# 本地（cmd 语法，跑约 25-40 分钟）
+# 本地连远程服务器（PowerShell 语法，跑约 25-40 分钟）
+$env:NL2SQL_BASE="http://<ECS公网IP>"
 python scripts\eval_accuracy.py
 ```
 
@@ -129,9 +130,9 @@ cd /opt/nl2sql && python3 eval_result_compare.py
 
 ```powershell
 mkdir -Force d:\mywork\20260818_java_agent\scripts\reports
-scp root@123.57.53.23:/opt/nl2sql/reports/eval_summary_*.md d:\mywork\20260818_java_agent\scripts\reports\
-scp root@123.57.53.23:/opt/nl2sql/reports/eval_report_*.json d:\mywork\20260818_java_agent\scripts\reports\
-scp root@123.57.53.23:/opt/nl2sql/reports/failures_*.csv d:\mywork\20260818_java_agent\scripts\reports\
+scp root@<ECS公网IP>:/opt/nl2sql/reports/eval_summary_*.md d:\mywork\20260818_java_agent\scripts\reports\
+scp root@<ECS公网IP>:/opt/nl2sql/reports/eval_report_*.json d:\mywork\20260818_java_agent\scripts\reports\
+scp root@<ECS公网IP>:/opt/nl2sql/reports/failures_*.csv d:\mywork\20260818_java_agent\scripts\reports\
 ```
 
 ---
@@ -143,14 +144,14 @@ scp root@123.57.53.23:/opt/nl2sql/reports/failures_*.csv d:\mywork\20260818_java
 ```powershell
 # 本地：打包 + 上传到 /tmp（不直接覆盖生产路径）
 mvn clean package -DskipTests
-scp target\nl2sql-app-0.0.1-SNAPSHOT.jar root@123.57.53.23:/tmp/
+scp target\nl2sql-app-0.0.1-SNAPSHOT.jar root@<ECS公网IP>:/tmp/
 ```
 
 ```bash
 # 服务器：备份 → 停服 → 替换 → 起服 → 验证
 TS=$(date +%Y%m%d_%H%M%S)
 cp /opt/nl2sql/nl2sql-app.jar /opt/nl2sql/backup_jar_${TS}.jar      # ① 备份
-mysqldump -uroot -pdili123 nl2sql > /opt/nl2sql/backup_db_${TS}.sql  # ② 备份库（有 Flyway 迁移时）
+mysqldump -uroot -p"$DB_PASSWORD" nl2sql > /opt/nl2sql/backup_db_${TS}.sql  # ② 备份库（有 Flyway 迁移时；DB_PASSWORD 见 /etc/default/nl2sql-app）
 systemctl stop nl2sql-app                                            # ③ 停服（避免 Text file busy）
 
 cp /tmp/nl2sql-app-0.0.1-SNAPSHOT.jar /opt/nl2sql/nl2sql-app.jar     # ④ 关键：cp 到 service 实际加载的路径
@@ -171,8 +172,8 @@ curl -s -o /dev/null -w "health=%{http_code}\n" http://127.0.0.1:8080/actuator/h
 systemctl stop nl2sql-app
 cp /opt/nl2sql/backup_jar_时间戳.jar /opt/nl2sql/nl2sql-app.jar
 # 若迁移已执行且需回滚数据库：
-mysql -uroot -pdili123 nl2sql < /opt/nl2sql/backup_db_时间戳.sql
-mysql -uroot -pdili123 nl2sql -e "DELETE FROM flyway_schema_history WHERE version='7';"
+mysql -uroot -p"$DB_PASSWORD" nl2sql < /opt/nl2sql/backup_db_时间戳.sql
+mysql -uroot -p"$DB_PASSWORD" nl2sql -e "DELETE FROM flyway_schema_history WHERE version='7';"
 systemctl start nl2sql-app
 ```
 

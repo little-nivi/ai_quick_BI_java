@@ -11,6 +11,7 @@ NL2SQL JOIN 测试数据生成脚本（阶段C配套）。
 依赖：pip install pymysql
 """
 import argparse
+import os
 import random
 from datetime import datetime, timedelta
 
@@ -20,7 +21,7 @@ DB_CONFIG = {
     "host": "127.0.0.1",
     "port": 3306,
     "user": "root",
-    "password": "dili123",
+    "password": os.environ.get("DB_PASSWORD", ""),
     "database": "nl2sql",
     "charset": "utf8mb4",
 }

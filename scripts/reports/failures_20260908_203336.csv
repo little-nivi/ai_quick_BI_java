@@ -1,2 +1,0 @@
-﻿case_id,category,question,code,fail_reason,sql
-141,并发测试,5人同时问总销售额,2000,"codes=[2000, 2000, 2000, 2000, None]",

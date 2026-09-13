@@ -30,6 +30,22 @@ __pycache__/
 Thumbs.db
 desktop.ini
 
-# === 前端（M6 预留） ===
+# === 前端构建产物 ===
 node_modules/
 dist/
+*.tsbuildinfo
+*.tar
+
+# === AI / IDE 工具产物（非源码，不入库） ===
+.trae/
+.codegraph/
+
+# === 测试报告：默认不入库，仅保留一份最终摘要 ===
+scripts/reports/*
+!scripts/reports/eval_summary_20260909_170731.md
+
+# === 本地私有文档（协作笔记/面试准备，不公开） ===
+/面试参考.md
+/CLAUDE.md
+/ai_spec_coding指导.md
+/docs/操作约束.md

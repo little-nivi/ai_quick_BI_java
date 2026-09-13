@@ -17,7 +17,8 @@ NL2SQL 全量评测脚本（M7 评测用例集 130 条；JOIN 20 条待 users �
 依赖：pip install requests
 
 注意：
-    1. 需要后端服务可访问（默认走公网 nginx http://123.57.53.23）；
+    1. 需要后端服务可访问（默认连本机 http://127.0.0.1:8080；
+       连远程服务器时设环境变量 NL2SQL_BASE 或用 --base 指定）；
     2. 会真实调用 qwen 产生少量 Token 费用（全量一轮 qwen-turbo < 2 元）；
     3. 报告输出到 scripts/reports/ 目录。
 """
@@ -701,7 +702,9 @@ def write_reports(results, summary, outdir):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--base", default="http://123.57.53.23")
+    parser.add_argument("--base",
+                        default=os.environ.get("NL2SQL_BASE", "http://127.0.0.1:8080"),
+                        help="后端地址，默认读环境变量 NL2SQL_BASE，未设置则连本机 8080")
     parser.add_argument("--username", default="admin")
     parser.add_argument("--password", default="admin123")
     parser.add_argument("--quick", action="store_true", help="只跑冒烟子集（~3 分钟）")

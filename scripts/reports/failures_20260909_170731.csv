@@ -1,4 +1,0 @@
-﻿case_id,category,question,code,fail_reason,sql
-301,澄清触发测试,对比一下 top5,2000,"期望 code=(4002,) 实际 2000","SELECT p.name, ROUND(SUM(o.amount), 2) AS total_amount FROM orders o JOIN products p ON o.product_id = p.id GROUP BY p.id, p.name ORDER BY total_amount DESC LIMIT 5"
-303,澄清触发测试,销量排名前,2000,"期望 code=(4002,) 实际 2000","SELECT p.name, SUM(o.quantity) AS 销量 FROM orders o JOIN products p ON o.product_id = p.id GROUP BY p.name ORDER BY 销量 DESC LIMIT 10"
-304,澄清触发测试,各地区的情况,2000,"期望 code=(4002,) 实际 2000","SELECT region, COUNT(*) AS order_count, ROUND(SUM(amount), 2) AS total_amount, SUM(quantity) AS total_quantity FROM orders GROUP BY region LIMIT 1000"

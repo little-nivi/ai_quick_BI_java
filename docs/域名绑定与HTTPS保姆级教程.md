@@ -1,6 +1,6 @@
 # 域名绑定与 HTTPS 保姆级教程（ICP 备案通过后）
 
-> 适用场景：域名 ICP 备案已通过审核，要把域名绑定到阿里云 ECS 公网 IP，让 `http://你的域名` 替代 `http://123.57.53.23` 访问 NL2SQL 系统。
+> 适用场景：域名 ICP 备案已通过审核，要把域名绑定到阿里云 ECS 公网 IP，让 `http://你的域名` 替代 `http://<ECS公网IP>` 访问 NL2SQL 系统。
 > 日期：2026-09-09
 > 关联文档：
 > - `docs/测试执行Runbook.md` — 测试流程（第 0 轮环境确认命令可复用）
@@ -32,7 +32,7 @@
 
 | 项目 | 值 |
 |---|---|
-| ECS 公网 IP | `123.57.53.23` |
+| ECS 公网 IP | `<ECS公网IP>` |
 | 你的域名 | 下文统一用 `yourdomain.com` 占位，**执行时全部替换成你的真实域名** |
 | 阿里云账号 | 备案用的那个账号（域名和 ECS 需在同一阿里云账号下） |
 | 前置条件 | 域名已实名认证；备案通过短信/邮件已收到 |
@@ -46,8 +46,8 @@
 
 | # | 记录类型 | 主机记录 | 记录值 | TTL | 说明 |
 |---|---|---|---|---|---|
-| 1 | A | `@` | `123.57.53.23` | 10 分钟 | yourdomain.com 本身 |
-| 2 | A | `www` | `123.57.53.23` | 10 分钟 | www.yourdomain.com |
+| 1 | A | `@` | `<ECS公网IP>` | 10 分钟 | yourdomain.com 本身 |
+| 2 | A | `www` | `<ECS公网IP>` | 10 分钟 | www.yourdomain.com |
 
 3. 保存后等 5-10 分钟生效（TTL 10 分钟 = 缓存 10 分钟）。
 
@@ -58,7 +58,7 @@ nslookup yourdomain.com 223.5.5.5     # 指定阿里公共 DNS，避开运营商
 nslookup www.yourdomain.com 223.5.5.5
 ```
 
-通过标准：返回的 `Address` 是 `123.57.53.23`。
+通过标准：返回的 `Address` 是 `<ECS公网IP>`。
 
 > 若返回旧地址或不存在 → 等 10 分钟再试；控制台检查记录是否保存成功。
 
@@ -101,7 +101,7 @@ server_name yourdomain.com www.yourdomain.com;
 ```
 
 说明：
-- 原来写的是 `_` 或 `123.57.53.23` → 直接替换成上面这行（`_` 保留兜底也可以，多写几个值用空格分隔）；
+- 原来写的是 `_` 或 `<ECS公网IP>` → 直接替换成上面这行（`_` 保留兜底也可以，多写几个值用空格分隔）；
 - 如果当前配置里 `server_name` 有多个 server 块（如 80 跳转 443 的块），**每一块都改**；
 - 80 端口的 `server` 块和 443 端口的 `server` 块都要含域名。
 
@@ -213,13 +213,13 @@ curl.exe -s -o NUL -w "https_health=%{http_code}`n" https://yourdomain.com/actua
    <a href="https://beian.miit.gov.cn" target="_blank">你的备案号，如 粤ICP备2026XXXXXX号</a>
    ```
 
-2. **统一访问地址**（可选）：Runbook 里冒烟测试默认走公网 IP `http://123.57.53.23`，可把常用命令换成域名；`scripts/eval_accuracy.py` 的默认 `--base` 无需改动（传参即可覆盖）。
+2. **统一访问地址**（可选）：Runbook 里冒烟测试默认走公网 IP `http://<ECS公网IP>`，可把常用命令换成域名；`scripts/eval_accuracy.py` 的默认 `--base` 无需改动（传参即可覆盖）。
 
 ---
 
 ## 八、完成标准 Checklist
 
-- [ ] `nslookup yourdomain.com` → `123.57.53.23`
+- [ ] `nslookup yourdomain.com` → `<ECS公网IP>`
 - [ ] `http://yourdomain.com/actuator/health` → 200
 - [ ] 浏览器 `http://yourdomain.com` 可登录前端
 - [ ] （做了 HTTPS）`https://yourdomain.com/actuator/health` → 200，浏览器无证书警告

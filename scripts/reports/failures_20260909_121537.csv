@@ -1,8 +1,0 @@
-﻿case_id,category,question,code,fail_reason,sql
-1,单表简单查询,总销售额是多少,2000,Schema 幻觉字段: ['orders'],SELECT SUM(amount) AS 销售额 FROM orders LIMIT 1000
-21,单表聚合查询,各地区的订单数量排名,2000,Schema 幻觉字段: ['orders'],"SELECT region, COUNT(*) AS 订单量 FROM orders GROUP BY region ORDER BY 订单量 DESC LIMIT 1000"
-61,时间范围查询,上个月销售额,2000,Schema 幻觉字段: ['orders'],"SELECT ROUND(SUM(amount), 2) AS 销售额 FROM orders WHERE order_date >= DATE_SUB(NOW(), INTERVAL 30 DAY) LIMIT 1000"
-83,模糊语义查询,退货订单,2000,"Schema 幻觉字段: ['refund_count', 'refund_amount', 'orders', 'refunded']","SELECT COUNT(*) AS refund_count, COALESCE(SUM(amount), 0) AS refund_amount FROM orders WHERE status = 'refunded' LIMIT 1000"
-93,复杂嵌套查询,销售额超过10万的地区,2000,Schema 幻觉字段: ['orders'],"SELECT region, SUM(amount) AS 销售额 FROM orders GROUP BY region HAVING SUM(amount) > 100000 LIMIT 1000"
-201,JOIN多表查询,企业类型客户下了多少笔交易,2000,"Schema 幻觉字段: ['orders', 'customers']",SELECT COUNT(*) FROM orders o JOIN customers c ON o.user_id = c.id WHERE c.type = '企业' LIMIT 1000
-207,JOIN多表查询,数码类商品总共卖出去了多少件,2000,"Schema 幻觉字段: ['orders', 'products']",SELECT SUM(o.quantity) FROM orders o JOIN products p ON o.product_id = p.id WHERE p.category = '数码' LIMIT 1000

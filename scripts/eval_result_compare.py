@@ -20,6 +20,7 @@
 """
 import argparse
 import json
+import os
 import sys
 import time
 from dataclasses import dataclass
@@ -223,7 +224,7 @@ def main():
     parser.add_argument("--mysql-host", default="127.0.0.1")
     parser.add_argument("--mysql-port", type=int, default=3306)
     parser.add_argument("--mysql-user", default="root")
-    parser.add_argument("--mysql-password", default="dili123")
+    parser.add_argument("--mysql-password", default=os.environ.get("DB_PASSWORD", ""))
     parser.add_argument("--mysql-db", default="nl2sql")
     args = parser.parse_args()
 
@@ -314,7 +315,6 @@ def main():
             print()
 
     # 生成报告
-    import os
     report_dir = "/opt/nl2sql/reports" if os.path.exists("/opt/nl2sql") else "scripts/reports"
     os.makedirs(report_dir, exist_ok=True)
     ts = time.strftime("%Y%m%d_%H%M%S")

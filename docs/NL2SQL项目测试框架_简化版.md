@@ -14,7 +14,7 @@
 | 环境 | 地址 | 配置 | 用途 |
 | :--- | :--- | :--- | :--- |
 | **本地** | `localhost:8080` | Windows + JDK 17 + Maven | 代码开发、单元测试、Mock 调试 |
-| **服务器** | `123.57.53.23`（阿里云 ECS 2核2G） | Ubuntu 22.04 + MySQL 8.0 Docker + JDK 17 + nginx | 全量评测在此跑（唯一有真实 LLM API 的环境） |
+| **服务器** | `<ECS公网IP>`（阿里云 ECS 2核2G） | Ubuntu 22.04 + MySQL 8.0 Docker + JDK 17 + nginx | 全量评测在此跑（唯一有真实 LLM API 的环境） |
 
 ### 环境隔离三原则
 
